@@ -414,13 +414,44 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
             }
 
             // Look up existing holding for this symbol/account.
-            let mut holding_id: Option<String> = conn
+            let holding_lookup: Result<Option<String>, String> = conn
                 .query_row(
                     "SELECT id FROM holdings WHERE account_id = ?1 AND symbol = ?2",
                     rusqlite::params![import_data.account_id, symbol],
                     |r| r.get(0),
                 )
-                .ok();
+                .map(Some)
+                .or_else(|e| {
+                    if e == rusqlite::Error::QueryReturnedNoRows {
+                        Ok(None)
+                    } else {
+                        Err(e.to_string())
+                    }
+                });
+
+            let mut holding_id: Option<String> = match holding_lookup {
+                Ok(id) => id,
+                Err(e) => {
+                    errors.push(ImportError {
+                        row: row_num,
+                        column: String::new(),
+                        message: format!("查询持仓失败: {}", e),
+                    });
+                    skipped_count += 1;
+                    continue;
+                }
+            };
+
+            if holding_id.is_none() && tx_type == "SELL" {
+                // Cannot sell a position that doesn't exist.
+                errors.push(ImportError {
+                    row: row_num,
+                    column: "transaction_type".to_string(),
+                    message: format!("第{}行 {} 没有持仓记录，无法导入卖出交易", row_num, symbol),
+                });
+                skipped_count += 1;
+                continue;
+            }
 
             // For BUY transactions with no existing holding, create a new one.
             if holding_id.is_none() && tx_type == "BUY" {
@@ -445,13 +476,39 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
 
             // Update holding shares and avg_cost to reflect this transaction.
             if let Some(ref hid) = holding_id {
-                let (cur_shares, cur_avg_cost): (f64, f64) = conn
+                let holding_data: Result<(f64, f64), String> = conn
                     .query_row(
                         "SELECT shares, avg_cost FROM holdings WHERE id = ?1",
                         rusqlite::params![hid],
                         |r| Ok((r.get(0)?, r.get(1)?)),
                     )
-                    .unwrap_or((0.0, 0.0));
+                    .map_err(|e| e.to_string());
+
+                let (cur_shares, cur_avg_cost) = match holding_data {
+                    Ok(data) => data,
+                    Err(e) => {
+                        errors.push(ImportError {
+                            row: row_num,
+                            column: String::new(),
+                            message: format!("读取持仓失败: {}", e),
+                        });
+                        skipped_count += 1;
+                        continue;
+                    }
+                };
+
+                if tx_type == "SELL" && shares > cur_shares {
+                    errors.push(ImportError {
+                        row: row_num,
+                        column: "shares".to_string(),
+                        message: format!(
+                            "第{}行 {} 卖出数量({})超过当前持仓({})",
+                            row_num, symbol, shares, cur_shares
+                        ),
+                    });
+                    skipped_count += 1;
+                    continue;
+                }
 
                 let (new_shares, new_avg_cost) = if tx_type == "BUY" {
                     let total = cur_shares + shares;
