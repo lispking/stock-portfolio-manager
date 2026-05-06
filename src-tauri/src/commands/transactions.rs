@@ -89,13 +89,26 @@ pub fn create_transaction(
 
     let result = (|| -> Result<(Option<String>,), String> {
         // Find existing holding for this symbol/account
-        let holding_id: Option<String> = conn
+        let mut holding_id: Option<String> = conn
             .query_row(
                 "SELECT id FROM holdings WHERE account_id = ?1 AND symbol = ?2",
                 rusqlite::params![account_id, symbol],
                 |row| row.get(0),
             )
             .ok();
+
+        // For a BUY with no existing holding, create a new one.
+        if holding_id.is_none() && transaction_type == "BUY" {
+            let new_hid = uuid::Uuid::new_v4().to_string();
+            let created_at = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "INSERT INTO holdings (id, account_id, symbol, name, market, category_id, shares, avg_cost, currency, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0.0, 0.0, ?6, ?7, ?8)",
+                rusqlite::params![new_hid, account_id, symbol, name, market, currency, created_at, created_at],
+            )
+            .map_err(|e| e.to_string())?;
+            holding_id = Some(new_hid);
+        }
 
         // Update holding shares and avg_cost based on transaction type
         if let Some(ref hid) = holding_id {
