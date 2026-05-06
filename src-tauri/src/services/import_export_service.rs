@@ -413,11 +413,78 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                 continue;
             }
 
+            // Look up existing holding for this symbol/account.
+            let mut holding_id: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM holdings WHERE account_id = ?1 AND symbol = ?2",
+                    rusqlite::params![import_data.account_id, symbol],
+                    |r| r.get(0),
+                )
+                .ok();
+
+            // For BUY transactions with no existing holding, create a new one.
+            if holding_id.is_none() && tx_type == "BUY" {
+                let new_hid = Uuid::new_v4().to_string();
+                match conn.execute(
+                    "INSERT INTO holdings (id, account_id, symbol, name, market, category_id, shares, avg_cost, currency, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0.0, 0.0, ?6, ?7, ?8)",
+                    rusqlite::params![new_hid, import_data.account_id, symbol, name, market, currency, now, now],
+                ) {
+                    Ok(_) => holding_id = Some(new_hid),
+                    Err(e) => {
+                        errors.push(ImportError {
+                            row: row_num,
+                            column: String::new(),
+                            message: format!("创建持仓失败: {}", e),
+                        });
+                        skipped_count += 1;
+                        continue;
+                    }
+                }
+            }
+
+            // Update holding shares and avg_cost to reflect this transaction.
+            if let Some(ref hid) = holding_id {
+                let (cur_shares, cur_avg_cost): (f64, f64) = conn
+                    .query_row(
+                        "SELECT shares, avg_cost FROM holdings WHERE id = ?1",
+                        rusqlite::params![hid],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .unwrap_or((0.0, 0.0));
+
+                let (new_shares, new_avg_cost) = if tx_type == "BUY" {
+                    let total = cur_shares + shares;
+                    let avg = if total > 0.0 {
+                        (cur_shares * cur_avg_cost + shares * price) / total
+                    } else {
+                        price
+                    };
+                    (total, avg)
+                } else {
+                    // SELL: shares decrease, avg_cost unchanged
+                    (cur_shares - shares, cur_avg_cost)
+                };
+
+                if let Err(e) = conn.execute(
+                    "UPDATE holdings SET shares = ?2, avg_cost = ?3, updated_at = ?4 WHERE id = ?1",
+                    rusqlite::params![hid, new_shares, new_avg_cost, now],
+                ) {
+                    errors.push(ImportError {
+                        row: row_num,
+                        column: String::new(),
+                        message: format!("更新持仓失败: {}", e),
+                    });
+                    skipped_count += 1;
+                    continue;
+                }
+            }
+
             let id = Uuid::new_v4().to_string();
             match conn.execute(
-                "INSERT INTO transactions (id, account_id, symbol, name, market, transaction_type, shares, price, total_amount, commission, currency, traded_at, notes, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-                rusqlite::params![id, import_data.account_id, symbol, name, market, tx_type, shares, price, total_amount, commission, currency, traded_at, notes, now],
+                "INSERT INTO transactions (id, holding_id, account_id, symbol, name, market, transaction_type, shares, price, total_amount, commission, currency, traded_at, notes, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                rusqlite::params![id, holding_id, import_data.account_id, symbol, name, market, tx_type, shares, price, total_amount, commission, currency, traded_at, notes, now],
             ) {
                 Ok(_) => imported_count += 1,
                 Err(e) => {
