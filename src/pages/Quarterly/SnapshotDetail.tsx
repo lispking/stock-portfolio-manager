@@ -188,11 +188,22 @@ export default function SnapshotDetail() {
               if (slices.length === 0) return null;
               return (
                 <Col key={label} xs={24} sm={12} lg={6}>
-                  <PieChart data={slices} title={label} height={220} currencyCode={currency} />
+                  <PieChart data={slices} title={label} height={200} currencyCode={currency} hideLegend />
                 </Col>
               );
             })}
           </Row>
+          {/* Shared legend — built from all holdings so every category appears */}
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-2">
+            {categorySlices(holdings).map(({ name, color }) => (
+              <span key={name} className="flex items-center gap-1 text-sm">
+                <span
+                  style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, background: color ?? "#999", flexShrink: 0 }}
+                />
+                {name}
+              </span>
+            ))}
+          </div>
         </Card>
       )}
 
