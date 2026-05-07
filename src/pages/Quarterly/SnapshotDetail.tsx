@@ -13,6 +13,7 @@ import {
 import { ArrowLeftOutlined, EditOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuarterlyStore } from "../../stores/quarterlyStore";
+import { useAccountStore } from "../../stores/accountStore";
 import SnapshotHoldingsTable from "./SnapshotHoldingsTable";
 import QuarterlyNotesEditor from "./QuarterlyNotesEditor";
 import HoldingChangesTable from "./HoldingChangesTable";
@@ -40,11 +41,14 @@ export default function SnapshotDetail() {
 
   const { pnlColorDark } = usePnlColor();
 
+  const { fetchAccounts } = useAccountStore();
+
   useEffect(() => {
     if (snapshotId) {
       fetchDetail(snapshotId);
       fetchQuarterlyTransactions(snapshotId);
     }
+    fetchAccounts();
     return () => clearDetail();
   }, [snapshotId]);
 
