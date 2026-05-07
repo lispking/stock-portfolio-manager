@@ -23,6 +23,7 @@ import { useAccountStore } from "../../stores/accountStore";
 import type { Transaction, Market, Currency, TransactionType, Holding, StockQuote } from "../../types";
 import ImportFromImageModal from "./ImportFromImageModal";
 import ImportFromIbCsvModal from "./ImportFromIbCsvModal";
+import ImportFromMoomooCsvModal from "./ImportFromMoomooCsvModal";
 
 const { Title, Text } = Typography;
 
@@ -65,6 +66,7 @@ export default function TransactionsPage() {
   const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [csvImportModalOpen, setCsvImportModalOpen] = useState(false);
+  const [moomooCsvImportModalOpen, setMoomooCsvImportModalOpen] = useState(false);
 
   useEffect(() => {
     fetchTransactions();
@@ -336,6 +338,16 @@ export default function TransactionsPage() {
                 </Button>
               );
             }
+            if (acct.name.toLowerCase().includes("moomoo")) {
+              return (
+                <Button
+                  icon={<FileTextOutlined />}
+                  onClick={() => setMoomooCsvImportModalOpen(true)}
+                >
+                  从 CSV 导入
+                </Button>
+              );
+            }
             return (
               <Button
                 icon={<FileTextOutlined />}
@@ -506,13 +518,29 @@ export default function TransactionsPage() {
       {/* Import from CSV modal – only for US/HK accounts */}
       {filterAccountId && (() => {
         const account = accounts.find((a) => a.id === filterAccountId);
-        return account && (account.market === "US" || account.market === "HK") ? (
+        return account && (account.market === "US" || account.market === "HK") && !account.name.toLowerCase().includes("moomoo") ? (
           <ImportFromIbCsvModal
             open={csvImportModalOpen}
             account={account}
             onClose={() => setCsvImportModalOpen(false)}
             onImported={() => {
               setCsvImportModalOpen(false);
+              fetchTransactions();
+            }}
+          />
+        ) : null;
+      })()}
+
+      {/* Import from moomoo CSV modal */}
+      {filterAccountId && (() => {
+        const account = accounts.find((a) => a.id === filterAccountId);
+        return account && account.name.toLowerCase().includes("moomoo") ? (
+          <ImportFromMoomooCsvModal
+            open={moomooCsvImportModalOpen}
+            account={account}
+            onClose={() => setMoomooCsvImportModalOpen(false)}
+            onImported={() => {
+              setMoomooCsvImportModalOpen(false);
               fetchTransactions();
             }}
           />
