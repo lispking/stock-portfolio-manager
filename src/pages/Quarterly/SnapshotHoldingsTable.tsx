@@ -110,7 +110,7 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading, s
     ? "仓位% (市场)"
     : "仓位% (组合)";
 
-  const marketValueTitle = uniformPrefix != null
+  const marketValueTitle = uniformPrefix !== null
     ? `市值 (${uniformPrefix})`
     : "市值";
 
