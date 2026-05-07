@@ -10,7 +10,7 @@ interface Props {
   initialNotes: string;
 }
 
-const NOTE_TEMPLATE = `### 本季度回顾
+const MARKET_SECTION = `### 本季度回顾
 - 整体市场环境：
 - 主要操作：
 - 收益来源：
@@ -24,6 +24,20 @@ const NOTE_TEMPLATE = `### 本季度回顾
 - 仓位调整计划：
 - 风险控制：
 `;
+
+const NOTE_TEMPLATE = `## 🇨🇳 A股
+
+${MARKET_SECTION}
+---
+
+## 🇭🇰 港股
+
+${MARKET_SECTION}
+---
+
+## 🇺🇸 美股
+
+${MARKET_SECTION}`;
 
 export default function QuarterlyNotesEditor({ snapshotId, initialNotes }: Props) {
   const { updateQuarterlyNotes } = useQuarterlyStore();
