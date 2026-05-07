@@ -28,6 +28,7 @@ pub use quarterly::{
     CategoryComparison, ComparisonOverview, HoldingChangeItem, HoldingChanges,
     HoldingNoteHistory, MarketComparison, QuarterComparison, QuarterlyHoldingSnapshot,
     QuarterlyNotesSummary, QuarterlySnapshot, QuarterlySnapshotDetail, QuarterlyTrends,
+    StockTransactionGroup,
 };
 pub use quote::{DailyHoldingSnapshot, DailyPortfolioValue, ExchangeRates, HoldingWithQuote, StockQuote};
 pub use quote_provider::QuoteProviderConfig;

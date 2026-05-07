@@ -187,6 +187,7 @@ pub fn run() {
             commands::quarterly::update_quarterly_notes,
             commands::quarterly::get_quarterly_notes_history,
             commands::quarterly::get_quarterly_trends,
+            commands::quarterly::get_quarterly_transactions,
             // Phase 6: Import/Export
             commands::import_export::export_holdings_csv,
             commands::import_export::export_transactions_csv,

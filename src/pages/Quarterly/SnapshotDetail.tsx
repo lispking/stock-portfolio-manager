@@ -10,12 +10,16 @@ import {
   Statistic,
   Typography,
 } from "antd";
+import PieChart from "../../components/charts/PieChart";
+import type { PieSlice } from "../../types";
 import { ArrowLeftOutlined, EditOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuarterlyStore } from "../../stores/quarterlyStore";
+import { useAccountStore } from "../../stores/accountStore";
 import SnapshotHoldingsTable from "./SnapshotHoldingsTable";
 import QuarterlyNotesEditor from "./QuarterlyNotesEditor";
 import HoldingChangesTable from "./HoldingChangesTable";
+import QuarterlyTransactionsSection from "./QuarterlyTransactionsSection";
 import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Title, Text } = Typography;
@@ -27,14 +31,48 @@ function fmt(val: number) {
 export default function SnapshotDetail() {
   const { snapshotId } = useParams<{ snapshotId: string }>();
   const navigate = useNavigate();
-  const { detail, loading, fetchDetail, refreshSnapshot, clearDetail } = useQuarterlyStore();
+  const {
+    detail,
+    loading,
+    quarterlyTransactions,
+    fetchDetail,
+    refreshSnapshot,
+    clearDetail,
+    fetchQuarterlyTransactions,
+  } = useQuarterlyStore();
 
   const { pnlColorDark } = usePnlColor();
+
+  /** Build category distribution pie data for a subset of holdings */
+  function categorySlices(hdgs: { market: string; category_name: string; category_color: string; market_value: number }[], market?: string): PieSlice[] {
+    const subset = market ? hdgs.filter((h) => h.market === market) : hdgs;
+    const map = new Map<string, { value: number; color: string }>();
+    subset.forEach((h) => {
+      const key = h.category_name || "未分类";
+      const color = h.category_color || "#999";
+      const prev = map.get(key);
+      map.set(key, { value: (prev?.value ?? 0) + h.market_value, color });
+    });
+    const CATEGORY_ORDER = ["现金类", "分红股", "成长股", "套利"];
+    return [...map.entries()]
+      .map(([name, { value, color }]) => ({ name, value, color }))
+      .sort((a, b) => {
+        const ai = CATEGORY_ORDER.indexOf(a.name);
+        const bi = CATEGORY_ORDER.indexOf(b.name);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+  }
+
+  const holdings = detail?.holdings ?? [];
+
+  const { fetchAccounts } = useAccountStore();
 
   useEffect(() => {
     if (snapshotId) {
       fetchDetail(snapshotId);
+      fetchQuarterlyTransactions(snapshotId);
     }
+    fetchAccounts();
     return () => clearDetail();
   }, [snapshotId]);
 
@@ -66,7 +104,12 @@ export default function SnapshotDetail() {
         </Space>
         <Button
           icon={<ReloadOutlined />}
-          onClick={() => snapshotId && refreshSnapshot(snapshotId)}
+          onClick={() => {
+            if (snapshotId) {
+              refreshSnapshot(snapshotId);
+              fetchQuarterlyTransactions(snapshotId);
+            }
+          }}
           loading={loading}
           size="small"
         >
@@ -138,6 +181,39 @@ export default function SnapshotDetail() {
         </Descriptions>
       </Card>
 
+      {/* Category distribution */}
+      {holdings.length > 0 && (
+        <Card size="small" className="mb-4" title="类别分布">
+          <Row gutter={[8, 8]}>
+            {[
+              { label: "整体", market: undefined, currency: "USD" },
+              { label: "🇨🇳 A股", market: "CN", currency: "CNY" },
+              { label: "🇭🇰 港股", market: "HK", currency: "HKD" },
+              { label: "🇺🇸 美股", market: "US", currency: "USD" },
+            ].map(({ label, market, currency }) => {
+              const slices = categorySlices(holdings, market);
+              if (slices.length === 0) return null;
+              return (
+                <Col key={label} xs={24} sm={12} lg={6}>
+                  <PieChart data={slices} title={label} height={200} currencyCode={currency} hideLegend />
+                </Col>
+              );
+            })}
+          </Row>
+          {/* Shared legend — built from all holdings so every category appears */}
+          <div className="flex flex-wrap justify-start gap-x-4 gap-y-1 mt-2">
+            {categorySlices(holdings).map(({ name, color }) => (
+              <span key={name} className="flex items-center gap-1 text-sm">
+                <span
+                  style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, background: color ?? "#999", flexShrink: 0 }}
+                />
+                {name}
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Divider />
 
       {/* Quarterly Notes */}
@@ -174,6 +250,11 @@ export default function SnapshotDetail() {
         </>
       )}
 
+      {/* Quarterly Transactions */}
+      <QuarterlyTransactionsSection groups={quarterlyTransactions} loading={loading} />
+
+      <Divider />
+
       {/* Holdings Table */}
       {snapshotId && (
         <Card size="small" title="持仓明细">
@@ -181,6 +262,7 @@ export default function SnapshotDetail() {
             holdings={detail?.holdings ?? []}
             snapshotId={snapshotId}
             loading={loading}
+            snap={snap}
           />
         </Card>
       )}

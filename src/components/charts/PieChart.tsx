@@ -7,6 +7,7 @@ interface PieChartProps {
   centerText?: string;
   height?: number;
   currencyCode?: string;
+  hideLegend?: boolean;
 }
 
 const DEFAULT_COLORS = [
@@ -14,7 +15,7 @@ const DEFAULT_COLORS = [
   "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc", "#48b8d0",
 ];
 
-export default function PieChart({ data, title, centerText, height = 300, currencyCode = "USD" }: PieChartProps) {
+export default function PieChart({ data, title, centerText, height = 300, currencyCode = "USD", hideLegend = false }: PieChartProps) {
   const seriesData = data.map((item, i) => ({
     name: item.name,
     value: item.value,
@@ -32,17 +33,19 @@ export default function PieChart({ data, title, centerText, height = 300, curren
       formatter: (params: { name: string; value: number; percent: number }) =>
         `${params.name}<br/>${currencyCode} ${params.value.toFixed(2)} (${params.percent}%)`,
     },
-    legend: {
-      type: "scroll",
-      orient: "horizontal",
-      bottom: 0,
-      left: "center",
-    },
+    legend: hideLegend
+      ? { show: false }
+      : {
+          type: "scroll",
+          orient: "horizontal",
+          bottom: 0,
+          left: "center",
+        },
     series: [
       {
         type: "pie",
         radius: ["45%", "70%"],
-        center: ["50%", "45%"],
+        center: ["50%", hideLegend ? "50%" : "45%"],
         avoidLabelOverlap: true,
         label: centerText
           ? {

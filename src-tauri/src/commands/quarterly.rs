@@ -1,7 +1,7 @@
 use crate::db::Database;
 use crate::models::quarterly::{
     HoldingNoteHistory, QuarterComparison, QuarterlyNotesSummary, QuarterlySnapshot,
-    QuarterlySnapshotDetail, QuarterlyTrends,
+    QuarterlySnapshotDetail, QuarterlyTrends, StockTransactionGroup,
 };
 use crate::services::exchange_rate_service::ExchangeRateCache;
 use crate::services::quote_service::QuoteCache;
@@ -106,4 +106,12 @@ pub async fn get_quarterly_trends(
     db: State<'_, Database>,
 ) -> Result<QuarterlyTrends, String> {
     quarterly_service::get_quarterly_trends(&db)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn get_quarterly_transactions(
+    db: State<'_, Database>,
+    snapshot_id: String,
+) -> Result<Vec<StockTransactionGroup>, String> {
+    quarterly_service::get_quarterly_transactions(&db, &snapshot_id)
 }

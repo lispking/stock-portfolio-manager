@@ -506,6 +506,21 @@ export interface QuarterlyTrends {
   holding_counts: number[];
 }
 
+/** Per-stock summary of transactions within a quarter. */
+export interface StockTransactionGroup {
+  symbol: string;
+  name: string;
+  market: Market;
+  currency: Currency;
+  buy_count: number;
+  sell_count: number;
+  total_buy_shares: number;
+  total_sell_shares: number;
+  total_buy_amount: number;
+  total_sell_amount: number;
+  transactions: Transaction[];
+}
+
 // Phase 6: Import/Export types
 export interface ExportFilters {
   market?: string;

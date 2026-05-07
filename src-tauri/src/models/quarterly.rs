@@ -1,3 +1,4 @@
+use crate::models::transaction::Transaction;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -155,4 +156,21 @@ pub struct QuarterlyTrends {
     pub market_values: HashMap<String, Vec<f64>>,
     pub category_values: HashMap<String, Vec<f64>>,
     pub holding_counts: Vec<usize>,
+}
+
+/// Per-stock summary of transactions within a quarter, with the individual
+/// transaction records attached.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StockTransactionGroup {
+    pub symbol: String,
+    pub name: String,
+    pub market: String,
+    pub currency: String,
+    pub buy_count: i64,
+    pub sell_count: i64,
+    pub total_buy_shares: f64,
+    pub total_sell_shares: f64,
+    pub total_buy_amount: f64,
+    pub total_sell_amount: f64,
+    pub transactions: Vec<Transaction>,
 }

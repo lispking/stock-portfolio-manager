@@ -6,6 +6,7 @@ import type {
   QuarterlySnapshot,
   QuarterlySnapshotDetail,
   QuarterlyTrends,
+  StockTransactionGroup,
 } from "../types";
 
 interface QuarterlyState {
@@ -15,6 +16,7 @@ interface QuarterlyState {
   trends: QuarterlyTrends | null;
   notesSummaries: QuarterlyNotesSummary[];
   missingQuarters: string[];
+  quarterlyTransactions: StockTransactionGroup[];
   loading: boolean;
   error: string | null;
 
@@ -29,6 +31,7 @@ interface QuarterlyState {
   fetchNotesSummaries: () => Promise<void>;
   updateHoldingNotes: (snapshotId: string, symbol: string, notes: string) => Promise<void>;
   updateQuarterlyNotes: (snapshotId: string, notes: string) => Promise<void>;
+  fetchQuarterlyTransactions: (snapshotId: string) => Promise<void>;
   clearDetail: () => void;
   clearComparison: () => void;
 }
@@ -40,6 +43,7 @@ export const useQuarterlyStore = create<QuarterlyState>((set, get) => ({
   trends: null,
   notesSummaries: [],
   missingQuarters: [],
+  quarterlyTransactions: [],
   loading: false,
   error: null,
 
@@ -179,4 +183,16 @@ export const useQuarterlyStore = create<QuarterlyState>((set, get) => ({
 
   clearDetail: () => set({ detail: null }),
   clearComparison: () => set({ comparison: null }),
+
+  fetchQuarterlyTransactions: async (snapshotId: string) => {
+    try {
+      const quarterlyTransactions = await invoke<StockTransactionGroup[]>(
+        "get_quarterly_transactions",
+        { snapshotId }
+      );
+      set({ quarterlyTransactions });
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
 }));
