@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Button, Space, Table, Tag, Typography } from "antd";
+import { useState, useMemo } from "react";
+import { Button, Select, Space, Table, Tag, Typography } from "antd";
 import { EditOutlined, HistoryOutlined } from "@ant-design/icons";
-import type { QuarterlyHoldingSnapshot } from "../../types";
+import type { QuarterlyHoldingSnapshot, QuarterlySnapshot } from "../../types";
 import HoldingNotesEditor from "./HoldingNotesEditor";
 import { usePnlColor } from "../../hooks/usePnlColor";
 
@@ -11,6 +11,7 @@ interface Props {
   holdings: QuarterlyHoldingSnapshot[];
   snapshotId: string;
   loading?: boolean;
+  snap?: QuarterlySnapshot;
 }
 
 function fmtPct(v: number) {
@@ -27,10 +28,91 @@ const MARKET_LABELS: Record<string, string> = {
   HK: "🇭🇰 港股",
 };
 
-export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }: Props) {
+const MARKET_CURRENCY_PREFIX: Record<string, string> = {
+  US: "$",
+  CN: "¥",
+  HK: "HK$",
+};
+
+export default function SnapshotHoldingsTable({ holdings, snapshotId, loading, snap }: Props) {
   const [notesTarget, setNotesTarget] = useState<QuarterlyHoldingSnapshot | null>(null);
   const [historySymbol, setHistorySymbol] = useState<string | null>(null);
+  const [filterMarket, setFilterMarket] = useState<string | undefined>(undefined);
+  const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
   const { pnlColorDark } = usePnlColor();
+
+  // Derive unique accounts from holdings
+  const uniqueAccounts = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; market: string }>();
+    holdings.forEach((h) => {
+      if (!map.has(h.account_id)) {
+        map.set(h.account_id, { id: h.account_id, name: h.account_name, market: h.market });
+      }
+    });
+    return [...map.values()];
+  }, [holdings]);
+
+  // Apply filters
+  const displayHoldings = useMemo(() => {
+    return holdings.filter((h) => {
+      if (filterMarket && h.market !== filterMarket) return false;
+      if (filterAccountId && h.account_id !== filterAccountId) return false;
+      return true;
+    });
+  }, [holdings, filterMarket, filterAccountId]);
+
+  // The market of the selected account (if any)
+  const activeAccountMarket = useMemo(() => {
+    if (!filterAccountId) return undefined;
+    return uniqueAccounts.find((a) => a.id === filterAccountId)?.market;
+  }, [filterAccountId, uniqueAccounts]);
+
+  // Weight denominator: account total > market total > 0 (use stored weight)
+  const weightDenominator = useMemo(() => {
+    if (filterAccountId) {
+      // Sum market_value for all visible holdings of this account (same currency)
+      return displayHoldings.reduce((sum, h) => sum + h.market_value, 0);
+    }
+    if (filterMarket && snap) {
+      const totals: Record<string, number> = {
+        US: snap.us_value,
+        CN: snap.cn_value,
+        HK: snap.hk_value,
+      };
+      return totals[filterMarket] ?? 0;
+    }
+    return 0;
+  }, [filterAccountId, filterMarket, displayHoldings, snap]);
+
+  // Currency prefix for the market_value column header note
+  // null = mixed (each row shows its own currency)
+  const uniformPrefix: string | null = useMemo(() => {
+    if (activeAccountMarket) return MARKET_CURRENCY_PREFIX[activeAccountMarket] ?? "";
+    if (filterMarket) return MARKET_CURRENCY_PREFIX[filterMarket] ?? "";
+    return null;
+  }, [filterMarket, activeAccountMarket]);
+
+  function computeWeight(h: QuarterlyHoldingSnapshot): number {
+    if ((filterAccountId || filterMarket) && weightDenominator > 0) {
+      return (h.market_value / weightDenominator) * 100;
+    }
+    return h.weight;
+  }
+
+  function fmtMv(h: QuarterlyHoldingSnapshot): string {
+    const prefix = uniformPrefix ?? (MARKET_CURRENCY_PREFIX[h.market] ?? "");
+    return `${prefix}${fmt(h.market_value)}`;
+  }
+
+  const weightTitle = filterAccountId
+    ? "仓位% (账户)"
+    : filterMarket
+    ? "仓位% (市场)"
+    : "仓位% (组合)";
+
+  const marketValueTitle = uniformPrefix != null
+    ? `市值 (${uniformPrefix})`
+    : "市值";
 
   const columns = [
     {
@@ -38,12 +120,6 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }:
       dataIndex: "market",
       key: "market",
       render: (m: string) => <Tag>{MARKET_LABELS[m] ?? m}</Tag>,
-      filters: [
-        { text: "美股", value: "US" },
-        { text: "A股", value: "CN" },
-        { text: "港股", value: "HK" },
-      ],
-      onFilter: (value: unknown, record: QuarterlyHoldingSnapshot) => record.market === value,
     },
     {
       title: "代码",
@@ -88,13 +164,14 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }:
       render: (v: number) => fmt(v),
     },
     {
-      title: "市值",
+      title: marketValueTitle,
       dataIndex: "market_value",
       key: "market_value",
-      render: (v: number) => <Text strong>{fmt(v)}</Text>,
+      render: (_: unknown, record: QuarterlyHoldingSnapshot) => (
+        <Text strong>{fmtMv(record)}</Text>
+      ),
       sorter: (a: QuarterlyHoldingSnapshot, b: QuarterlyHoldingSnapshot) =>
         a.market_value - b.market_value,
-      defaultSortOrder: "descend" as const,
     },
     {
       title: "盈亏",
@@ -118,11 +195,13 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }:
         a.pnl_percent - b.pnl_percent,
     },
     {
-      title: "仓位%",
-      dataIndex: "weight",
+      title: weightTitle,
       key: "weight",
-      render: (v: number) => `${v.toFixed(2)}%`,
-      sorter: (a: QuarterlyHoldingSnapshot, b: QuarterlyHoldingSnapshot) => a.weight - b.weight,
+      defaultSortOrder: "descend" as const,
+      sorter: (a: QuarterlyHoldingSnapshot, b: QuarterlyHoldingSnapshot) =>
+        computeWeight(a) - computeWeight(b),
+      render: (_: unknown, record: QuarterlyHoldingSnapshot) =>
+        `${computeWeight(record).toFixed(2)}%`,
     },
     {
       title: "操作思考",
@@ -150,8 +229,42 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }:
 
   return (
     <>
+      {/* Filter controls */}
+      <Space className="mb-3" wrap>
+        <Space>
+          <Text type="secondary">按市场:</Text>
+          <Select
+            value={filterMarket}
+            onChange={(v) => { setFilterMarket(v); setFilterAccountId(undefined); }}
+            placeholder="全部市场"
+            allowClear
+            style={{ width: 140 }}
+          >
+            <Select.Option value="US">🇺🇸 美股</Select.Option>
+            <Select.Option value="CN">🇨🇳 A股</Select.Option>
+            <Select.Option value="HK">🇭🇰 港股</Select.Option>
+          </Select>
+        </Space>
+        <Space>
+          <Text type="secondary">按账户:</Text>
+          <Select
+            value={filterAccountId}
+            onChange={(v) => { setFilterAccountId(v); setFilterMarket(undefined); }}
+            placeholder="全部账户"
+            allowClear
+            style={{ width: 180 }}
+          >
+            {uniqueAccounts.map((a) => (
+              <Select.Option key={a.id} value={a.id}>
+                [{MARKET_LABELS[a.market] ?? a.market}] {a.name}
+              </Select.Option>
+            ))}
+          </Select>
+        </Space>
+      </Space>
+
       <Table
-        dataSource={holdings}
+        dataSource={displayHoldings}
         columns={columns}
         rowKey="id"
         loading={loading}

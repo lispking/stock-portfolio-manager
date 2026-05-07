@@ -205,6 +205,7 @@ export default function SnapshotDetail() {
             holdings={detail?.holdings ?? []}
             snapshotId={snapshotId}
             loading={loading}
+            snap={snap}
           />
         </Card>
       )}
