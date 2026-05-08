@@ -46,6 +46,20 @@ pub fn run() {
                 }
             }
 
+            // Pre-load persisted exchange rates so the in-memory cache is
+            // warm immediately, even before a network fetch succeeds.
+            {
+                let db = app.state::<Database>();
+                let rate_cache = app.state::<ExchangeRateCache>();
+                match services::exchange_rate_service::load_exchange_rates_from_db(&db) {
+                    Ok(Some(rates)) => {
+                        rate_cache.set(rates);
+                    }
+                    Ok(None) => {}
+                    Err(e) => eprintln!("Failed to load cached exchange rates from DB: {}", e),
+                }
+            }
+
             // Spawn a background task to refresh holding quotes from the API.
             // This runs after startup so the UI is not blocked.
             let handle = app.handle().clone();

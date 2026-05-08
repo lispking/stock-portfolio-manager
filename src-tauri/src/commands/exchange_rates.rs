@@ -1,3 +1,4 @@
+use crate::db::Database;
 use crate::models::ExchangeRates;
 use crate::services::exchange_rate_service::{
     convert_currency, get_cached_rates, ExchangeRateCache,
@@ -7,8 +8,9 @@ use tauri::State;
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_exchange_rates(
     cache: State<'_, ExchangeRateCache>,
+    db: State<'_, Database>,
 ) -> Result<ExchangeRates, String> {
-    get_cached_rates(&cache).await
+    get_cached_rates(&cache, &db).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -17,7 +19,8 @@ pub async fn convert_amount(
     from_currency: String,
     to_currency: String,
     cache: State<'_, ExchangeRateCache>,
+    db: State<'_, Database>,
 ) -> Result<f64, String> {
-    let rates = get_cached_rates(&cache).await?;
+    let rates = get_cached_rates(&cache, &db).await?;
     Ok(convert_currency(amount, &from_currency, &to_currency, &rates))
 }

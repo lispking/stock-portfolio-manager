@@ -18,7 +18,7 @@ pub async fn get_statistics_overview(
     cache: State<'_, ExchangeRateCache>,
     quote_cache: State<'_, QuoteCache>,
 ) -> Result<StatisticsOverview, String> {
-    let rates = get_cached_rates(&cache).await.unwrap_or_else(|_| crate::models::ExchangeRates {
+    let rates = get_cached_rates(&cache, &db).await.unwrap_or_else(|_| crate::models::ExchangeRates {
         usd_cny: 7.2,
         usd_hkd: 7.8,
         cny_hkd: 7.8 / 7.2,
@@ -292,7 +292,7 @@ pub async fn get_statistics_by_category(
     quote_cache: State<'_, QuoteCache>,
     category_id: String,
 ) -> Result<CategoryStatistics, String> {
-    let rates = get_cached_rates(&cache).await.unwrap_or_else(|_| crate::models::ExchangeRates {
+    let rates = get_cached_rates(&cache, &db).await.unwrap_or_else(|_| crate::models::ExchangeRates {
         usd_cny: 7.2,
         usd_hkd: 7.8,
         cny_hkd: 7.8 / 7.2,
