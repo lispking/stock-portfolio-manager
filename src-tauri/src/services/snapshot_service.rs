@@ -115,7 +115,7 @@ pub async fn take_daily_snapshot(
         .collect();
 
     // 3. Get exchange rates (async)
-    let rates = crate::services::exchange_rate_service::get_cached_rates(cache).await?;
+    let rates = crate::services::exchange_rate_service::get_cached_rates(cache, db).await?;
 
     // 4. Calculate per-holding snapshots and aggregate values
     let mut us_cost = 0.0f64;
@@ -608,7 +608,7 @@ pub async fn backfill_snapshots(
         .collect();
 
     // 4. Get exchange rates (use current rates as approximation for all dates)
-    let rates = crate::services::exchange_rate_service::get_cached_rates(cache).await?;
+    let rates = crate::services::exchange_rate_service::get_cached_rates(cache, db).await?;
     let rates_json = serde_json::to_string(&rates).unwrap_or_default();
 
     // 5. For each missing date, calculate and store portfolio values.

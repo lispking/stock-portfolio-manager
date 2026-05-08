@@ -157,7 +157,7 @@ pub async fn get_dashboard_summary(
 ) -> Result<DashboardSummary, String> {
     let base = base_currency.unwrap_or_else(|| "USD".to_string());
 
-    let rates: ExchangeRates = get_cached_rates(&cache).await.unwrap_or_else(|_| ExchangeRates {
+    let rates: ExchangeRates = get_cached_rates(&cache, &db).await.unwrap_or_else(|_| ExchangeRates {
         usd_cny: 7.2,
         usd_hkd: 7.8,
         cny_hkd: 7.8 / 7.2,

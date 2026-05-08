@@ -143,7 +143,7 @@ pub async fn create_quarterly_snapshot(
     let price_map = get_prices_for_date(db, quote_cache, &rows.iter().map(|r| r.symbol.clone()).collect(), snapshot_date).await?;
 
     // Fetch exchange rates
-    let rates = get_cached_rates(cache).await.unwrap_or_else(|_| {
+    let rates = get_cached_rates(cache, db).await.unwrap_or_else(|_| {
         crate::models::quote::ExchangeRates {
             usd_cny: 7.2,
             usd_hkd: 7.8,
@@ -636,7 +636,7 @@ pub async fn refresh_quarterly_snapshot(
 
     // 5. Refresh exchange rates for current quarter, keep existing for past
     let rates: crate::models::quote::ExchangeRates = if is_current {
-        get_cached_rates(cache).await.unwrap_or_else(|_| {
+        get_cached_rates(cache, db).await.unwrap_or_else(|_| {
             // Fall back to stored rates
             serde_json::from_str(&exchange_rates_json).unwrap_or(crate::models::quote::ExchangeRates {
                 usd_cny: 7.2,

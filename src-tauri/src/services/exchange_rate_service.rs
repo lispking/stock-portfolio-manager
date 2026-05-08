@@ -1,3 +1,4 @@
+use crate::db::Database;
 use crate::models::ExchangeRates;
 use crate::services::http_client;
 use chrono::Utc;
@@ -102,9 +103,46 @@ pub async fn fetch_exchange_rates() -> Result<ExchangeRates, String> {
     })
 }
 
+/// Persist exchange rates to the database (single-row upsert, id=1).
+pub fn save_exchange_rates_to_db(db: &Database, rates: &ExchangeRates) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO cached_exchange_rates (id, usd_cny, usd_hkd, cny_hkd, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4)",
+        rusqlite::params![rates.usd_cny, rates.usd_hkd, rates.cny_hkd, rates.updated_at],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Load persisted exchange rates from the database (returns None if none saved yet).
+pub fn load_exchange_rates_from_db(db: &Database) -> Result<Option<ExchangeRates>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT usd_cny, usd_hkd, cny_hkd, updated_at
+             FROM cached_exchange_rates WHERE id = 1",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query_map([], |row| {
+            Ok(ExchangeRates {
+                usd_cny: row.get(0)?,
+                usd_hkd: row.get(1)?,
+                cny_hkd: row.get(2)?,
+                updated_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
 /// Get exchange rates, using the cache when fresh, and fetching if stale.
-/// Falls back to stale cache on network errors.
-pub async fn get_cached_rates(cache: &ExchangeRateCache) -> Result<ExchangeRates, String> {
+/// Falls back to stale in-memory cache, then to the DB-persisted cache, on network errors.
+pub async fn get_cached_rates(
+    cache: &ExchangeRateCache,
+    db: &Database,
+) -> Result<ExchangeRates, String> {
     if let Some(rates) = cache.get() {
         return Ok(rates);
     }
@@ -112,15 +150,32 @@ pub async fn get_cached_rates(cache: &ExchangeRateCache) -> Result<ExchangeRates
     match fetch_exchange_rates().await {
         Ok(rates) => {
             cache.set(rates.clone());
+            // Persist to DB so an offline restart can still use the last known rates.
+            if let Err(e) = save_exchange_rates_to_db(db, &rates) {
+                eprintln!("Warning: failed to persist exchange rates to DB: {}", e);
+            }
             Ok(rates)
         }
         Err(e) => {
-            // Offline fallback: return stale cache if available
+            // Offline fallback 1: stale in-memory cache.
             if let Some(stale) = cache.get_stale() {
-                eprintln!("Warning: could not fetch fresh exchange rates ({}), using stale cache", e);
-                Ok(stale)
-            } else {
-                Err(e)
+                eprintln!(
+                    "Warning: could not fetch fresh exchange rates ({}), using stale in-memory cache",
+                    e
+                );
+                return Ok(stale);
+            }
+            // Offline fallback 2: DB-persisted cache.
+            match load_exchange_rates_from_db(db) {
+                Ok(Some(persisted)) => {
+                    eprintln!(
+                        "Warning: could not fetch fresh exchange rates ({}), using DB-persisted cache ({})",
+                        e, persisted.updated_at
+                    );
+                    cache.set(persisted.clone());
+                    Ok(persisted)
+                }
+                _ => Err(e),
             }
         }
     }
