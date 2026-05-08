@@ -270,14 +270,14 @@ fn extract_rows_from_range(
 /// Build an ISO-8601 datetime string from a THS date string (e.g. "20260430")
 /// and time string (e.g. "14:13:09" or "141309").
 fn build_datetime(date_str: &str, time_str: &str) -> String {
-    // Normalise date: "20260430" → "2026-04-30"
+    // Normalize date: "20260430" → "2026-04-30"
     let date_part = if date_str.len() == 8 && date_str.chars().all(|c| c.is_ascii_digit()) {
         format!("{}-{}-{}", &date_str[0..4], &date_str[4..6], &date_str[6..8])
     } else {
         date_str.to_string()
     };
 
-    // Normalise time: "141309" → "14:13:09", or pass through "14:13:09" as-is
+    // Normalize time: "141309" → "14:13:09", or pass through "14:13:09" as-is
     let time_part = if time_str.len() == 6 && time_str.chars().all(|c| c.is_ascii_digit()) {
         format!("{}:{}:{}", &time_str[0..2], &time_str[2..4], &time_str[4..6])
     } else if time_str.is_empty() {
