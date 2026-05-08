@@ -25,6 +25,7 @@ import ImportFromImageModal from "./ImportFromImageModal";
 import ImportFromIbCsvModal from "./ImportFromIbCsvModal";
 import ImportFromMoomooCsvModal from "./ImportFromMoomooCsvModal";
 import ImportFromThsCsvModal from "./ImportFromThsCsvModal";
+import ImportFromFirstradeCsvModal from "./ImportFromFirstradeCsvModal";
 
 const { Title, Text } = Typography;
 
@@ -69,6 +70,7 @@ export default function TransactionsPage() {
   const [excelImportModalOpen, setExcelImportModalOpen] = useState(false);
   const [csvImportModalOpen, setCsvImportModalOpen] = useState(false);
   const [moomooCsvImportModalOpen, setMoomooCsvImportModalOpen] = useState(false);
+  const [firstradeCsvImportModalOpen, setFirstradeCsvImportModalOpen] = useState(false);
 
   useEffect(() => {
     fetchTransactions();
@@ -358,6 +360,16 @@ export default function TransactionsPage() {
                 </Button>
               );
             }
+            if (acct.name.toLowerCase().includes("firstrade")) {
+              return (
+                <Button
+                  icon={<FileTextOutlined />}
+                  onClick={() => setFirstradeCsvImportModalOpen(true)}
+                >
+                  从 CSV 导入
+                </Button>
+              );
+            }
             return (
               <Button
                 icon={<FileTextOutlined />}
@@ -541,10 +553,13 @@ export default function TransactionsPage() {
         ) : null;
       })()}
 
-      {/* Import from CSV modal – only for US/HK accounts */}
+      {/* Import from CSV modal – only for US/HK accounts (not moomoo, not firstrade) */}
       {filterAccountId && (() => {
         const account = accounts.find((a) => a.id === filterAccountId);
-        return account && (account.market === "US" || account.market === "HK") && !account.name.toLowerCase().includes("moomoo") ? (
+        return account &&
+          (account.market === "US" || account.market === "HK") &&
+          !account.name.toLowerCase().includes("moomoo") &&
+          !account.name.toLowerCase().includes("firstrade") ? (
           <ImportFromIbCsvModal
             open={csvImportModalOpen}
             account={account}
@@ -567,6 +582,22 @@ export default function TransactionsPage() {
             onClose={() => setMoomooCsvImportModalOpen(false)}
             onImported={() => {
               setMoomooCsvImportModalOpen(false);
+              fetchTransactions();
+            }}
+          />
+        ) : null;
+      })()}
+
+      {/* Import from Firstrade CSV modal */}
+      {filterAccountId && (() => {
+        const account = accounts.find((a) => a.id === filterAccountId);
+        return account && account.name.toLowerCase().includes("firstrade") ? (
+          <ImportFromFirstradeCsvModal
+            open={firstradeCsvImportModalOpen}
+            account={account}
+            onClose={() => setFirstradeCsvImportModalOpen(false)}
+            onImported={() => {
+              setFirstradeCsvImportModalOpen(false);
               fetchTransactions();
             }}
           />
