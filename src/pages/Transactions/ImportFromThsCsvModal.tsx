@@ -186,7 +186,9 @@ function parseThsCsv(text: string): EditableRow[] {
     const cols = splitCsvLine(line);
     const get = (j: number) => (j !== -1 ? cols[j] ?? "" : "");
 
-    const code = get(iCode).trim();
+    // THS may store short codes without leading zeros (e.g. "1" for 000001).
+    // Pad to 6 digits before validation.
+    const code = get(iCode).trim().replace(/^\d{1,5}$/, (s) => s.padStart(6, "0"));
     // Skip rows without a valid 6-digit numeric code
     if (!/^\d{6}$/.test(code)) continue;
 
