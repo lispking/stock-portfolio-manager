@@ -133,6 +133,9 @@ async fn build_holding_details(
                 pnl_percent,
                 daily_pnl,
                 currency: r.currency,
+                // Default to native market value; callers that have exchange
+                // rates (e.g. get_statistics_by_category) will overwrite this.
+                market_value_usd: market_value,
             }
         })
         .collect();
