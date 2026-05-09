@@ -371,12 +371,13 @@ export default function HoldingsPage() {
       ),
     },
     { title: "股票名称", dataIndex: "name", key: "name" },
-    {
+    ...(!filterAccountId ? [{
       title: "所属账户",
       dataIndex: "account_id",
       key: "account_id",
+      width: 120,
       render: (id: string) => accountMap[id] || id,
-    },
+    }] : []),
     {
       title: "投资类别",
       dataIndex: "category_id",
