@@ -121,13 +121,13 @@ function buildDateTime(date: string, time: string): string {
 function deriveSymbol(code: string, exchange: string): string {
   const c = code.trim();
   if (exchange.includes("上海") || exchange.toUpperCase().includes("SH")) {
-    return `SH${c}`;
+    return `sh${c}`;
   }
   if (exchange.includes("深圳") || exchange.toUpperCase().includes("SZ")) {
-    return `SZ${c}`;
+    return `sz${c}`;
   }
   // Heuristic: Shanghai A-shares begin with 6; Shenzhen with 0 or 3
-  return c.startsWith("6") ? `SH${c}` : `SZ${c}`;
+  return c.startsWith("6") ? `sh${c}` : `sz${c}`;
 }
 
 /**

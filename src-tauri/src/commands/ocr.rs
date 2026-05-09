@@ -86,7 +86,7 @@ async fn lookup_via_xueqiu(name: &str) -> Result<Option<String>, String> {
         };
         let is_cn = code.starts_with("SH") || code.starts_with("SZ");
         if is_cn && code.len() == 8 {
-            return Ok(Some(code.to_string()));
+            return Ok(Some(code.to_lowercase()));
         }
     }
 
