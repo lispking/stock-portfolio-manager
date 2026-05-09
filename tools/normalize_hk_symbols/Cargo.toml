@@ -1,0 +1,12 @@
+[package]
+name = "normalize_hk_symbols"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone utility to normalize Hong Kong stock symbols in the stock-portfolio-manager database (strip leading zeros, e.g. 0998.HK → 998.HK)"
+
+[[bin]]
+name = "normalize_hk_symbols"
+path = "src/main.rs"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
