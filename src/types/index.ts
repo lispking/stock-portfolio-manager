@@ -130,6 +130,8 @@ export interface HoldingDetail {
   pnl_percent: number;
   daily_pnl: number;
   currency: Currency;
+  /** Market value normalised to USD for cross-currency sorting. */
+  market_value_usd: number;
 }
 
 // Phase 3: Statistics types

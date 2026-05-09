@@ -34,4 +34,6 @@ pub struct HoldingDetail {
     pub pnl_percent: f64,
     pub daily_pnl: f64,
     pub currency: String,
+    /// Market value normalised to USD for cross-currency comparison/sorting.
+    pub market_value_usd: f64,
 }

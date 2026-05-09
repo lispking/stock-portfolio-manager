@@ -322,10 +322,16 @@ pub async fn get_statistics_by_category(
     };
 
     let all_details = build_holding_details_pub(&db, &quote_cache, true).await?;
-    let details: Vec<_> = all_details
+    let mut details: Vec<_> = all_details
         .into_iter()
         .filter(|d| d.category_name == cat_name)
         .collect();
+
+    // Normalise market_value_usd so holdings across multiple markets/currencies
+    // can be sorted on a common basis.
+    for d in &mut details {
+        d.market_value_usd = to_usd_value(d.market_value, &d.currency, &rates);
+    }
 
     let mut market_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
 
