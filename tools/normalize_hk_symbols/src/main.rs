@@ -29,8 +29,7 @@ fn normalize_hk_symbol(symbol: &str) -> Option<String> {
     }
     let code = &symbol[..symbol.len() - suffix.len()];
     // Remove leading zeros; keep at least one digit.
-    let normalized_code = code.trim_start_matches('0');
-    let normalized_code = if normalized_code.is_empty() { "0" } else { normalized_code };
+    let normalized_code = code.trim_start_matches('0').max("0");
     let normalized = format!("{}{}", normalized_code, suffix);
     if normalized == symbol {
         None // already normalized
@@ -48,6 +47,20 @@ struct TableSpec {
     market_col: Option<&'static str>,
     /// Whether symbol is the PRIMARY KEY (requires DELETE+INSERT instead of UPDATE)
     symbol_is_pk: bool,
+}
+
+/// Row data for the `cached_quotes` table (needed for DELETE + re-INSERT on PRIMARY KEY rename).
+struct CachedQuoteRow {
+    name: String,
+    market: String,
+    current_price: f64,
+    previous_close: f64,
+    change: f64,
+    change_percent: f64,
+    high: f64,
+    low: f64,
+    volume: i64,
+    updated_at: String,
 }
 
 const TABLES: &[TableSpec] = &[
@@ -100,12 +113,23 @@ fn main() {
 
     let mut db_path: Option<String> = None;
     let mut dry_run = false;
+    let mut extra_paths = false;
 
     for arg in args.iter().skip(1) {
         match arg.as_str() {
             "--dry-run" => dry_run = true,
-            path => db_path = Some(path.to_string()),
+            path => {
+                if db_path.is_some() {
+                    extra_paths = true;
+                }
+                db_path = Some(path.to_string());
+            }
         }
+    }
+
+    if extra_paths {
+        eprintln!("错误：提供了多个数据库路径，请只指定一个。");
+        std::process::exit(1);
     }
 
     let db_path = db_path.unwrap_or_else(|| {
@@ -126,10 +150,6 @@ fn main() {
     let conn = Connection::open(&db_path).unwrap_or_else(|e| {
         eprintln!("无法打开数据库 {}: {}", db_path, e);
         std::process::exit(1);
-    });
-
-    conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap_or_else(|e| {
-        eprintln!("警告：无法关闭外键约束: {}", e);
     });
 
     let mut total_updated = 0u64;
@@ -216,25 +236,12 @@ fn main() {
 
             if spec.symbol_is_pk {
                 // For PRIMARY KEY columns we cannot UPDATE directly.
-                // Strategy: copy the row(s) with the new symbol (skip on conflict),
+                // Strategy: copy the row(s) with the new symbol (INSERT OR REPLACE),
                 // then delete the old row(s).
                 //
                 // cached_quotes schema:
                 //   symbol TEXT PRIMARY KEY, name, market, current_price,
                 //   previous_close, change, change_percent, high, low, volume, updated_at
-                struct CachedQuoteRow {
-                    name: String,
-                    market: String,
-                    current_price: f64,
-                    previous_close: f64,
-                    change: f64,
-                    change_percent: f64,
-                    high: f64,
-                    low: f64,
-                    volume: i64,
-                    updated_at: String,
-                }
-
                 let rows: Vec<CachedQuoteRow> = {
                     let mut stmt = conn
                         .prepare(
@@ -242,7 +249,10 @@ fn main() {
                              change, change_percent, high, low, volume, updated_at \
                              FROM cached_quotes WHERE symbol = ?1",
                         )
-                        .unwrap();
+                        .unwrap_or_else(|e| {
+                            eprintln!("准备查询失败 [cached_quotes]: {}", e);
+                            std::process::exit(1);
+                        });
                     stmt.query_map(params![old_sym], |row| {
                         Ok(CachedQuoteRow {
                             name: row.get(0)?,
@@ -257,7 +267,10 @@ fn main() {
                             updated_at: row.get(9)?,
                         })
                     })
-                    .unwrap()
+                    .unwrap_or_else(|e| {
+                        eprintln!("查询失败 [cached_quotes] {}: {}", old_sym, e);
+                        std::process::exit(1);
+                    })
                     .filter_map(|r| r.ok())
                     .collect()
                 };
@@ -316,8 +329,6 @@ fn main() {
             total_updated += 1;
         }
     }
-
-    conn.execute_batch("PRAGMA foreign_keys = ON;").ok();
 
     println!();
     println!("=== 汇总 ===");
