@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { HoldingDetail } from "../../types";
@@ -28,8 +29,13 @@ function fmtMoney(value: number, currency: string) {
 export default function HoldingsTable({ holdings, loading }: Props) {
   const { pnlColor } = usePnlColor();
 
-  const accountFilters = Array.from(new Set(holdings.map((h) => h.account_name))).map(
-    (name) => ({ text: name, value: name })
+  const accountFilters = useMemo(
+    () =>
+      Array.from(new Set(holdings.map((h) => h.account_name))).map((name) => ({
+        text: name,
+        value: name,
+      })),
+    [holdings]
   );
 
   const columns: ColumnsType<HoldingDetail> = [
