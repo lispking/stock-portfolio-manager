@@ -106,7 +106,7 @@ export default function AccountTab({ selectedAccountId, onAccountChange }: Props
           </Row>
 
           <Card title="持仓明细">
-            <HoldingsTable holdings={stats.holdings} loading={false} />
+            <HoldingsTable holdings={stats.holdings} loading={false} hideAccountMarket />
           </Card>
         </>
       )}

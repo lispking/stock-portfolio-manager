@@ -9,6 +9,7 @@ const { Text } = Typography;
 interface Props {
   holdings: HoldingDetail[];
   loading: boolean;
+  hideAccountMarket?: boolean;
 }
 
 const marketLabel: Record<string, string> = {
@@ -26,7 +27,7 @@ function fmtMoney(value: number, currency: string) {
   })}`;
 }
 
-export default function HoldingsTable({ holdings, loading }: Props) {
+export default function HoldingsTable({ holdings, loading, hideAccountMarket = false }: Props) {
   const { pnlColor } = usePnlColor();
 
   // Track which filter values are currently active for account and market columns.
@@ -61,7 +62,8 @@ export default function HoldingsTable({ holdings, loading }: Props) {
     [holdings]
   );
 
-  const columns: ColumnsType<HoldingDetail> = useMemo(() => [
+  const columns: ColumnsType<HoldingDetail> = useMemo(() => {
+    const allColumns: ColumnsType<HoldingDetail> = [
     {
       title: "代码",
       dataIndex: "symbol",
@@ -190,7 +192,11 @@ export default function HoldingsTable({ holdings, loading }: Props) {
       align: "right",
       width: 100,
     },
-  ], [accountFilters, filteredTotalMvUsd, pnlColor]);
+    ];
+    return hideAccountMarket
+      ? allColumns.filter((c) => c.key !== "account_name" && c.key !== "market")
+      : allColumns;
+  }, [accountFilters, filteredTotalMvUsd, pnlColor, hideAccountMarket]);
 
   return (
     <Table<HoldingDetail>
