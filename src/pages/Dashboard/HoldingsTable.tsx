@@ -71,7 +71,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       sorter: (a, b) => a.symbol.localeCompare(b.symbol),
       render: (symbol: string) => <Text strong>{symbol}</Text>,
       fixed: "left",
-      width: 90,
+      width: 110,
     },
     {
       title: "名称",
@@ -79,7 +79,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       key: "name",
       sorter: (a, b) => a.name.localeCompare(b.name),
       ellipsis: true,
-      width: 150,
+      width: 140,
     },
     {
       title: "账户",
@@ -101,7 +101,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
         { text: "🇭🇰 港股", value: "HK" },
       ],
       onFilter: (value, record) => record.market === value,
-      width: 90,
+      width: 80,
     },
     {
       title: "类别",
@@ -110,7 +110,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       render: (name: string, record: HoldingDetail) => (
         <Tag color={record.category_color}>{name}</Tag>
       ),
-      width: 90,
+      width: 80,
     },
     {
       title: "持仓数量",
@@ -142,7 +142,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       render: (price: number, record: HoldingDetail) =>
         fmtMoney(price, record.currency),
       align: "right",
-      width: 110,
+      width: 100,
     },
     {
       title: "市值",
@@ -153,7 +153,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       render: (value: number, record: HoldingDetail) =>
         fmtMoney(value, record.currency),
       align: "right",
-      width: 130,
+      width: 140,
     },
     {
       title: "仓位%",
@@ -178,7 +178,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
         </span>
       ),
       align: "right",
-      width: 130,
+      width: 140,
     },
     {
       title: "盈亏比例",

@@ -376,7 +376,7 @@ export default function HoldingsPage() {
         </Space>
       ),
     },
-    { title: "股票名称", dataIndex: "name", key: "name", width: 120 },
+    { title: "股票名称", dataIndex: "name", key: "name", width: 120, ellipsis: true, },
     ...(!filterAccountId ? [{
       title: "所属账户",
       dataIndex: "account_id",

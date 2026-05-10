@@ -246,11 +246,14 @@ export default function TransactionsPage() {
       title: "日期",
       dataIndex: "traded_at",
       key: "traded_at",
+      width: 160,
       render: (date: string) => dayjs(date).format("YYYY-MM-DD HH:mm"),
     },
     {
       title: "股票",
       key: "stock",
+      width: 220,
+      ellipsis: true,
       render: (_: unknown, record: Transaction) => (
         <Space>
           <Tag color={marketColors[record.market]}>{record.market}</Tag>
