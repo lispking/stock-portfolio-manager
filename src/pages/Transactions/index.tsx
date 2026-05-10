@@ -262,12 +262,12 @@ export default function TransactionsPage() {
         </Space>
       ),
     },
-    {
+    ...(!filterAccountId ? [{
       title: "账户",
       dataIndex: "account_id",
       key: "account_id",
       render: (id: string) => accountMap[id] || id,
-    },
+    }] : []),
     {
       title: "类型",
       dataIndex: "transaction_type",
