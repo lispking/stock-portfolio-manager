@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Table, Tag, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import type { ColumnsType, TableProps } from "antd/es/table";
 import type { HoldingDetail } from "../../types";
 import { usePnlColor } from "../../hooks/usePnlColor";
 
@@ -29,6 +29,29 @@ function fmtMoney(value: number, currency: string) {
 export default function HoldingsTable({ holdings, loading }: Props) {
   const { pnlColor } = usePnlColor();
 
+  // Track which filter values are currently active for account and market columns.
+  // This lets us recompute the denominator whenever holdings or filters change.
+  const [activeAccountFilter, setActiveAccountFilter] = useState<string[] | null>(null);
+  const [activeMarketFilter, setActiveMarketFilter] = useState<string[] | null>(null);
+
+  const filteredTotalMvUsd = useMemo(() => {
+    const visible = holdings.filter((h) => {
+      if (activeAccountFilter && activeAccountFilter.length > 0 && !activeAccountFilter.includes(h.account_name))
+        return false;
+      if (activeMarketFilter && activeMarketFilter.length > 0 && !activeMarketFilter.includes(h.market))
+        return false;
+      return true;
+    });
+    return visible.reduce((sum, h) => sum + h.market_value_usd, 0);
+  }, [holdings, activeAccountFilter, activeMarketFilter]);
+
+  const handleTableChange: TableProps<HoldingDetail>["onChange"] = (_pagination, filters) => {
+    const accountVals = filters["account_name"];
+    const marketVals = filters["market"];
+    setActiveAccountFilter(accountVals ? (accountVals as string[]) : null);
+    setActiveMarketFilter(marketVals ? (marketVals as string[]) : null);
+  };
+
   const accountFilters = useMemo(
     () =>
       Array.from(new Set(holdings.map((h) => h.account_name))).map((name) => ({
@@ -38,7 +61,7 @@ export default function HoldingsTable({ holdings, loading }: Props) {
     [holdings]
   );
 
-  const columns: ColumnsType<HoldingDetail> = [
+  const columns: ColumnsType<HoldingDetail> = useMemo(() => [
     {
       title: "代码",
       dataIndex: "symbol",
@@ -129,6 +152,17 @@ export default function HoldingsTable({ holdings, loading }: Props) {
       width: 130,
     },
     {
+      title: "仓位%",
+      key: "position_pct",
+      sorter: (a, b) => a.market_value_usd - b.market_value_usd,
+      render: (_: unknown, record: HoldingDetail) => {
+        const pct = filteredTotalMvUsd > 0 ? (record.market_value_usd / filteredTotalMvUsd) * 100 : 0;
+        return `${pct.toFixed(2)}%`;
+      },
+      align: "right",
+      width: 90,
+    },
+    {
       title: "盈亏金额",
       dataIndex: "pnl",
       key: "pnl",
@@ -156,7 +190,7 @@ export default function HoldingsTable({ holdings, loading }: Props) {
       align: "right",
       width: 100,
     },
-  ];
+  ], [accountFilters, filteredTotalMvUsd, pnlColor]);
 
   return (
     <Table<HoldingDetail>
@@ -164,10 +198,11 @@ export default function HoldingsTable({ holdings, loading }: Props) {
       dataSource={holdings}
       rowKey="id"
       loading={loading}
-      scroll={{ x: 1200 }}
+      scroll={{ x: 1300 }}
       size="small"
       pagination={{ pageSize: 20, showSizeChanger: true }}
       bordered
+      onChange={handleTableChange}
     />
   );
 }
