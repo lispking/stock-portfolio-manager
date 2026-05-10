@@ -206,7 +206,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       dataSource={holdings}
       rowKey="id"
       loading={loading}
-      scroll={{ x: 1100 }}
+      scroll={{ x: hideAccountMarket ? 1100 : 1310 }}
       size="small"
       pagination={{ pageSize: 20, showSizeChanger: true }}
       bordered
