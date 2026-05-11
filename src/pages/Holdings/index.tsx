@@ -803,7 +803,7 @@ export default function HoldingsPage() {
           setDetailTransactions([]);
         }}
         footer={null}
-        width={800}
+        width={900}
       >
         <Table
           dataSource={detailTransactions}
@@ -816,12 +816,14 @@ export default function HoldingsPage() {
               title: "日期",
               dataIndex: "traded_at",
               key: "traded_at",
+              width: 160,
               render: (date: string) => dayjs(date).format("YYYY-MM-DD HH:mm"),
             },
             {
               title: "类型",
               dataIndex: "transaction_type",
               key: "transaction_type",
+              width: 80,
               render: (type: TransactionType) => (
                 <Tag color={type === "BUY" ? "green" : type === "OPEN" ? "blue" : "red"}>
                   {type === "BUY" ? "买入" : type === "OPEN" ? "建仓" : "卖出"}
@@ -832,25 +834,28 @@ export default function HoldingsPage() {
               title: "股数",
               dataIndex: "shares",
               key: "shares",
+              width: 100,
               render: (v: number) => v.toLocaleString(),
             },
             {
               title: "价格",
               dataIndex: "price",
               key: "price",
-              render: (v: number, record: Transaction) => `${record.currency} ${v.toFixed(2)}`,
+              width: 100,
+              render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
             },
             {
               title: "总金额",
               dataIndex: "total_amount",
               key: "total_amount",
-              render: (v: number, record: Transaction) => `${record.currency} ${v.toFixed(2)}`,
+              render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
             },
             {
               title: "手续费",
               dataIndex: "commission",
               key: "commission",
-              render: (v: number, record: Transaction) => `${record.currency} ${v.toFixed(2)}`,
+              width: 100,
+              render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
             },
             {
               title: "备注",
