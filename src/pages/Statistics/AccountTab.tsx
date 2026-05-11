@@ -81,7 +81,7 @@ export default function AccountTab({ selectedAccountId, onAccountChange }: Props
         existing.market_value += h.market_value;
         existing.market_value_usd += h.market_value_usd;
         existing.pnl += h.pnl;
-        // Use the latest available price for the symbol
+        // All rows for the same symbol share the same live quote; take the last seen.
         existing.current_price = h.current_price;
       } else {
         map.set(h.symbol, {
