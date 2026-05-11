@@ -67,7 +67,7 @@ impl Database {
                 symbol TEXT NOT NULL,
                 name TEXT NOT NULL,
                 market TEXT NOT NULL CHECK(market IN ('US', 'CN', 'HK')),
-                transaction_type TEXT NOT NULL CHECK(transaction_type IN ('BUY', 'SELL', 'OPEN')),
+                transaction_type TEXT NOT NULL CHECK(transaction_type IN ('BUY', 'SELL')),
                 shares REAL NOT NULL,
                 price REAL NOT NULL,
                 total_amount REAL NOT NULL,
@@ -78,51 +78,6 @@ impl Database {
                 created_at TEXT NOT NULL
             );
         ")?;
-
-        // Migration: widen the transaction_type CHECK constraint to include 'OPEN'.
-        // SQLite does not support ALTER TABLE … MODIFY COLUMN, so we use the
-        // rename-recreate-copy-drop pattern.  Only runs when the existing schema
-        // still carries the old ('BUY', 'SELL') constraint.
-        let needs_txn_migration: bool = conn
-            .query_row(
-                "SELECT sql FROM sqlite_master WHERE type='table' AND name='transactions'",
-                [],
-                |row| {
-                    let sql: String = row.get(0)?;
-                    Ok(!sql.contains("'OPEN'"))
-                },
-            )
-            .unwrap_or(false);
-
-        if needs_txn_migration {
-            conn.execute_batch("
-                PRAGMA foreign_keys = OFF;
-                BEGIN;
-                ALTER TABLE transactions RENAME TO transactions_old;
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    holding_id TEXT REFERENCES holdings(id) ON DELETE SET NULL,
-                    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                    symbol TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    market TEXT NOT NULL CHECK(market IN ('US', 'CN', 'HK')),
-                    transaction_type TEXT NOT NULL CHECK(transaction_type IN ('BUY', 'SELL', 'OPEN')),
-                    shares REAL NOT NULL,
-                    price REAL NOT NULL,
-                    total_amount REAL NOT NULL,
-                    commission REAL NOT NULL DEFAULT 0,
-                    currency TEXT NOT NULL CHECK(currency IN ('USD', 'CNY', 'HKD')),
-                    traded_at TEXT NOT NULL,
-                    notes TEXT,
-                    created_at TEXT NOT NULL
-                );
-                INSERT INTO transactions (id, holding_id, account_id, symbol, name, market, transaction_type, shares, price, total_amount, commission, currency, traded_at, notes, created_at)
-                SELECT id, holding_id, account_id, symbol, name, market, transaction_type, shares, price, total_amount, commission, currency, traded_at, notes, created_at FROM transactions_old;
-                DROP TABLE transactions_old;
-                COMMIT;
-                PRAGMA foreign_keys = ON;
-            ")?;
-        }
 
         // Seed system categories (ignore if already exist)
         let categories = [
