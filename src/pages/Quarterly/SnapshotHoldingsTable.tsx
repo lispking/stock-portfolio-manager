@@ -134,6 +134,13 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading, s
 
   const columns = [
     {
+      title: "代码",
+      dataIndex: "symbol",
+      key: "symbol",
+      render: (s: string) => <Text strong>{s}</Text>,
+      fixed: "left",
+    },
+    {
       title: "市场",
       dataIndex: "market",
       key: "market",
@@ -150,12 +157,6 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading, s
       filteredValue: filteredAccountIds.length > 0 ? filteredAccountIds : null,
       onFilter: (value: unknown, record: QuarterlyHoldingSnapshot) => record.account_id === value,
       render: (_: string, record: QuarterlyHoldingSnapshot) => record.account_name,
-    },
-    {
-      title: "代码",
-      dataIndex: "symbol",
-      key: "symbol",
-      render: (s: string) => <Text strong>{s}</Text>,
     },
     {
       title: "名称",
@@ -199,6 +200,15 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading, s
         a.market_value - b.market_value,
     },
     {
+      title: weightTitle,
+      key: "weight",
+      defaultSortOrder: "descend" as const,
+      sorter: (a: QuarterlyHoldingSnapshot, b: QuarterlyHoldingSnapshot) =>
+        computeWeight(a) - computeWeight(b),
+      render: (_: unknown, record: QuarterlyHoldingSnapshot) =>
+        `${computeWeight(record).toFixed(2)}%`,
+    },
+    {
       title: "盈亏",
       dataIndex: "pnl",
       key: "pnl",
@@ -218,15 +228,6 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading, s
       ),
       sorter: (a: QuarterlyHoldingSnapshot, b: QuarterlyHoldingSnapshot) =>
         a.pnl_percent - b.pnl_percent,
-    },
-    {
-      title: weightTitle,
-      key: "weight",
-      defaultSortOrder: "descend" as const,
-      sorter: (a: QuarterlyHoldingSnapshot, b: QuarterlyHoldingSnapshot) =>
-        computeWeight(a) - computeWeight(b),
-      render: (_: unknown, record: QuarterlyHoldingSnapshot) =>
-        `${computeWeight(record).toFixed(2)}%`,
     },
     {
       title: "操作思考",
