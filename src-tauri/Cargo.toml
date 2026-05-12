@@ -1,6 +1,6 @@
 [package]
 name = "stock-portfolio-manager"
-version = "0.6.0"
+version = "1.0.0"
 description = "Stock Portfolio Manager"
 authors = []
 edition = "2021"
