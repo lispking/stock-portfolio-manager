@@ -14,6 +14,8 @@ import {
   message,
   DatePicker,
   AutoComplete,
+  Row,
+  Col,
 } from "antd";
 import { PlusOutlined, EditOutlined, FilterOutlined, CameraOutlined, FileTextOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -459,7 +461,7 @@ export default function TransactionsPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}
           initialValues={{ tradedAt: getDefaultTradedAt(), commission: 0 }}>
-          <Form.Item name="accountId" label="证券账户"
+          <Form.Item name="accountId" label="证券账户" style={{ marginBottom: 12 }}
             rules={[{ required: true, message: "请选择账户" }]}>
             <Select placeholder="选择证券账户" onChange={handleAccountChange}>
               {accounts.map((a) => (
@@ -469,74 +471,102 @@ export default function TransactionsPage() {
               ))}
             </Select>
           </Form.Item>
-          <Form.Item name="symbol" label="股票代码"
-            rules={[{ required: true, message: "请输入股票代码" }]}>
-            <AutoComplete
-              options={symbolOptions}
-              placeholder="输入或选择股票代码"
-              onSelect={handleSymbolSelect}
-              onBlur={handleSymbolBlur}
-              filterOption={(inputValue, option) =>
-                (option?.value?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0 ||
-                (option?.label?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0
-              }
-            />
-          </Form.Item>
-          <Form.Item name="name" label="股票名称"
-            rules={[{ required: true, message: "请输入股票名称" }]}>
-            <Input placeholder="如：苹果" disabled={symbolSearching} />
-          </Form.Item>
-          <Form.Item name="market" label="市场"
-            rules={[{ required: true, message: "请选择市场" }]}>
-            <Select placeholder="选择市场">
-              <Select.Option value="US">🇺🇸 美股</Select.Option>
-              <Select.Option value="CN">🇨🇳 A股</Select.Option>
-              <Select.Option value="HK">🇭🇰 港股</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="transactionType" label="交易类型"
-            rules={[{ required: true, message: "请选择交易类型" }]}>
-            <Select placeholder="买入 / 卖出 / 分红">
-              <Select.Option value="BUY">买入</Select.Option>
-              <Select.Option value="SELL">卖出</Select.Option>
-              <Select.Option value="PAY">分红</Select.Option>
-            </Select>
-          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="symbol" label="股票代码" style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请输入股票代码" }]}>
+                <AutoComplete
+                  options={symbolOptions}
+                  placeholder="输入或选择股票代码"
+                  onSelect={handleSymbolSelect}
+                  onBlur={handleSymbolBlur}
+                  filterOption={(inputValue, option) =>
+                    (option?.value?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0 ||
+                    (option?.label?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0
+                  }
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="name" label="股票名称" style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请输入股票名称" }]}>
+                <Input placeholder="如：苹果" disabled={symbolSearching} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="market" label="市场" style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请选择市场" }]}>
+                <Select placeholder="选择市场">
+                  <Select.Option value="US">🇺🇸 美股</Select.Option>
+                  <Select.Option value="CN">🇨🇳 A股</Select.Option>
+                  <Select.Option value="HK">🇭🇰 港股</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="transactionType" label="交易类型" style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请选择交易类型" }]}>
+                <Select placeholder="买入 / 卖出 / 分红">
+                  <Select.Option value="BUY">买入</Select.Option>
+                  <Select.Option value="SELL">卖出</Select.Option>
+                  <Select.Option value="PAY">分红</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
           {!isDividend && (
-            <Form.Item name="shares" label="交易股数"
-              rules={[{ required: true, message: "请输入交易股数" }]}>
-              <InputNumber min={1} precision={0} style={{ width: "100%" }}
-                onChange={handleAmountFieldChange} />
-            </Form.Item>
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="shares" label="交易股数" style={{ marginBottom: 12 }}
+                  rules={[{ required: true, message: "请输入交易股数" }]}>
+                  <InputNumber min={1} precision={0} style={{ width: "100%" }}
+                    onChange={handleAmountFieldChange} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="price" label="成交价格" style={{ marginBottom: 12 }}
+                  rules={[{ required: true, message: "请输入成交价格" }]}>
+                  <InputNumber min={0} precision={4} style={{ width: "100%" }}
+                    onChange={handleAmountFieldChange} />
+                </Form.Item>
+              </Col>
+            </Row>
           )}
-          {!isDividend && (
-            <Form.Item name="price" label="成交价格"
-              rules={[{ required: true, message: "请输入成交价格" }]}>
-              <InputNumber min={0} precision={4} style={{ width: "100%" }}
-                onChange={handleAmountFieldChange} />
-            </Form.Item>
-          )}
-          <Form.Item name="totalAmount" label="成交总额"
-            rules={[{ required: true, message: "请输入成交总额" }]}>
-            <InputNumber min={0} precision={2} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="commission" label="手续费">
-            <InputNumber min={0} precision={2} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="currency" label="币种"
-            rules={[{ required: true, message: "请选择币种" }]}>
-            <Select placeholder="选择币种">
-              <Select.Option value="USD">USD 美元</Select.Option>
-              <Select.Option value="CNY">CNY 人民币</Select.Option>
-              <Select.Option value="HKD">HKD 港元</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="tradedAt" label="成交时间"
-            rules={[{ required: true, message: "请选择成交时间" }]}>
-            <DatePicker showTime style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="notes" label="备注（可选）">
-            <Input.TextArea rows={3} placeholder="交易备注" />
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="totalAmount" label="成交总额" style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请输入成交总额" }]}>
+                <InputNumber min={0} precision={2} style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="commission" label="手续费" style={{ marginBottom: 12 }}>
+                <InputNumber min={0} precision={2} style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="currency" label="币种" style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请选择币种" }]}>
+                <Select placeholder="选择币种">
+                  <Select.Option value="USD">USD 美元</Select.Option>
+                  <Select.Option value="CNY">CNY 人民币</Select.Option>
+                  <Select.Option value="HKD">HKD 港元</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="tradedAt" label="成交时间" style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请选择成交时间" }]}>
+                <DatePicker showTime style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="notes" label="备注（可选）" style={{ marginBottom: 0 }}>
+            <Input.TextArea rows={2} placeholder="交易备注" />
           </Form.Item>
         </Form>
       </Modal>

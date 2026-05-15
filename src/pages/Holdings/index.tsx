@@ -16,6 +16,8 @@ import {
   Switch,
   Spin,
   AutoComplete,
+  Row,
+  Col,
 } from "antd";
 import { PlusOutlined, ReloadOutlined, SyncOutlined, FilterOutlined, DollarOutlined, UploadOutlined } from "@ant-design/icons";
 import ImportHoldingFromCsvModal from "./ImportHoldingFromCsvModal";
@@ -741,87 +743,118 @@ export default function HoldingsPage() {
         width={600}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Form.Item
-            name="accountId"
-            label="所属账户"
-            rules={[{ required: true, message: "请选择账户" }]}
-          >
-            <Select placeholder="选择证券账户" onChange={handleAccountChange}>
-              {accounts.map((a) => (
-                <Select.Option key={a.id} value={a.id}>
-                  [{a.market}] {a.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item
-            name="symbol"
-            label="股票代码"
-            rules={[{ required: true, message: "请输入股票代码" }]}
-          >
-            <AutoComplete
-              options={filteredSymbolOptions}
-              onSearch={setSymbolSearch}
-              onSelect={handleSymbolSelect}
-              onBlur={handleSymbolBlur}
-              placeholder="如：AAPL, sh600519, 0700.HK"
-            />
-          </Form.Item>
-          <Form.Item
-            name="name"
-            label="股票名称"
-            rules={[{ required: true, message: "请输入股票名称" }]}
-          >
-            <Input
-              placeholder="如：苹果, 贵州茅台, 腾讯控股"
-              suffix={fetchingName ? <Spin size="small" /> : undefined}
-            />
-          </Form.Item>
-          <Form.Item
-            name="market"
-            label="市场"
-            rules={[{ required: true, message: "请选择市场" }]}
-          >
-            <Select placeholder="选择市场">
-              <Select.Option value="US">🇺🇸 美股</Select.Option>
-              <Select.Option value="CN">🇨🇳 A股</Select.Option>
-              <Select.Option value="HK">🇭🇰 港股</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="categoryId" label="投资类别">
-            <Select placeholder="选择投资类别（可选）" allowClear>
-              {categories.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.icon} {c.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item
-            name="shares"
-            label="持仓股数"
-            rules={[{ required: true, message: "请输入持仓股数" }]}
-          >
-            <InputNumber min={0} precision={0} style={{ width: "100%" }} placeholder="持有股数" />
-          </Form.Item>
-          <Form.Item
-            name="avgCost"
-            label="平均成本价"
-            rules={[{ required: true, message: "请输入平均成本价" }]}
-          >
-            <InputNumber precision={4} style={{ width: "100%" }} placeholder="买入均价" />
-          </Form.Item>
-          <Form.Item
-            name="currency"
-            label="币种"
-            rules={[{ required: true, message: "请选择币种" }]}
-          >
-            <Select placeholder="选择币种">
-              <Select.Option value="USD">USD 美元</Select.Option>
-              <Select.Option value="CNY">CNY 人民币</Select.Option>
-              <Select.Option value="HKD">HKD 港元</Select.Option>
-            </Select>
-          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                name="accountId"
+                label="所属账户"
+                style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请选择账户" }]}
+              >
+                <Select placeholder="选择证券账户" onChange={handleAccountChange}>
+                  {accounts.map((a) => (
+                    <Select.Option key={a.id} value={a.id}>
+                      [{a.market}] {a.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="symbol"
+                label="股票代码"
+                style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请输入股票代码" }]}
+              >
+                <AutoComplete
+                  options={filteredSymbolOptions}
+                  onSearch={setSymbolSearch}
+                  onSelect={handleSymbolSelect}
+                  onBlur={handleSymbolBlur}
+                  placeholder="如：AAPL, sh600519, 0700.HK"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                name="name"
+                label="股票名称"
+                style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请输入股票名称" }]}
+              >
+                <Input
+                  placeholder="如：苹果, 贵州茅台, 腾讯控股"
+                  suffix={fetchingName ? <Spin size="small" /> : undefined}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="market"
+                label="市场"
+                style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请选择市场" }]}
+              >
+                <Select placeholder="选择市场">
+                  <Select.Option value="US">🇺🇸 美股</Select.Option>
+                  <Select.Option value="CN">🇨🇳 A股</Select.Option>
+                  <Select.Option value="HK">🇭🇰 港股</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="categoryId" label="投资类别" style={{ marginBottom: 12 }}>
+                <Select placeholder="选择投资类别（可选）" allowClear>
+                  {categories.map((c) => (
+                    <Select.Option key={c.id} value={c.id}>
+                      {c.icon} {c.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="shares"
+                label="持仓股数"
+                style={{ marginBottom: 12 }}
+                rules={[{ required: true, message: "请输入持仓股数" }]}
+              >
+                <InputNumber min={0} precision={0} style={{ width: "100%" }} placeholder="持有股数" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                name="avgCost"
+                label="平均成本价"
+                style={{ marginBottom: 0 }}
+                rules={[{ required: true, message: "请输入平均成本价" }]}
+              >
+                <InputNumber precision={4} style={{ width: "100%" }} placeholder="买入均价" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="currency"
+                label="币种"
+                style={{ marginBottom: 0 }}
+                rules={[{ required: true, message: "请选择币种" }]}
+              >
+                <Select placeholder="选择币种">
+                  <Select.Option value="USD">USD 美元</Select.Option>
+                  <Select.Option value="CNY">CNY 人民币</Select.Option>
+                  <Select.Option value="HKD">HKD 港元</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
 
