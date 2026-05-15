@@ -65,6 +65,8 @@ export default function TransactionsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [form] = Form.useForm();
+  const watchedType = Form.useWatch("transactionType", form);
+  const isDividend = watchedType === "PAY";
   const [accountHoldings, setAccountHoldings] = useState<Holding[]>([]);
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
@@ -177,18 +179,22 @@ export default function TransactionsPage() {
     tradedAt: dayjs.Dayjs;
     notes?: string;
   }) => {
+    // For dividend (PAY) transactions, shares and price are not meaningful
+    const submittedValues = values.transactionType === "PAY"
+      ? { ...values, shares: 0, price: 0 }
+      : values;
     try {
       if (editingTransaction) {
         await updateTransaction({
           id: editingTransaction.id,
-          ...values,
-          tradedAt: values.tradedAt.toISOString(),
+          ...submittedValues,
+          tradedAt: submittedValues.tradedAt.toISOString(),
         });
         message.success("交易记录更新成功");
       } else {
         await createTransaction({
-          ...values,
-          tradedAt: values.tradedAt.toISOString(),
+          ...submittedValues,
+          tradedAt: submittedValues.tradedAt.toISOString(),
         });
         message.success("交易记录添加成功");
       }
@@ -490,21 +496,26 @@ export default function TransactionsPage() {
           </Form.Item>
           <Form.Item name="transactionType" label="交易类型"
             rules={[{ required: true, message: "请选择交易类型" }]}>
-            <Select placeholder="买入 / 卖出">
+            <Select placeholder="买入 / 卖出 / 分红">
               <Select.Option value="BUY">买入</Select.Option>
               <Select.Option value="SELL">卖出</Select.Option>
+              <Select.Option value="PAY">分红</Select.Option>
             </Select>
           </Form.Item>
-          <Form.Item name="shares" label="交易股数"
-            rules={[{ required: true, message: "请输入交易股数" }]}>
-            <InputNumber min={1} precision={0} style={{ width: "100%" }}
-              onChange={handleAmountFieldChange} />
-          </Form.Item>
-          <Form.Item name="price" label="成交价格"
-            rules={[{ required: true, message: "请输入成交价格" }]}>
-            <InputNumber min={0} precision={4} style={{ width: "100%" }}
-              onChange={handleAmountFieldChange} />
-          </Form.Item>
+          {!isDividend && (
+            <Form.Item name="shares" label="交易股数"
+              rules={[{ required: true, message: "请输入交易股数" }]}>
+              <InputNumber min={1} precision={0} style={{ width: "100%" }}
+                onChange={handleAmountFieldChange} />
+            </Form.Item>
+          )}
+          {!isDividend && (
+            <Form.Item name="price" label="成交价格"
+              rules={[{ required: true, message: "请输入成交价格" }]}>
+              <InputNumber min={0} precision={4} style={{ width: "100%" }}
+                onChange={handleAmountFieldChange} />
+            </Form.Item>
+          )}
           <Form.Item name="totalAmount" label="成交总额"
             rules={[{ required: true, message: "请输入成交总额" }]}>
             <InputNumber min={0} precision={2} style={{ width: "100%" }} />
