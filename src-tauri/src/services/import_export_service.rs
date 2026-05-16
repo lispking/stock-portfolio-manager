@@ -534,7 +534,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                     // Dividend: shares unchanged.
                     // Adjust avg_cost only when the market setting is enabled.
                     let new_avg = if adjust && cur_shares > 0.0 {
-                        ((cur_shares * cur_avg_cost - total_amount) / cur_shares).max(0.0)
+                        (cur_shares * cur_avg_cost - total_amount) / cur_shares
                     } else {
                         cur_avg_cost
                     };
@@ -545,7 +545,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                     let remaining = cur_shares - shares;
                     let new_avg = if adjust {
                         if remaining > 0.0 {
-                            ((cur_shares * cur_avg_cost - total_amount) / remaining).max(0.0)
+                            (cur_shares * cur_avg_cost - total_amount) / remaining
                         } else {
                             0.0
                         }

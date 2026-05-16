@@ -145,7 +145,7 @@ pub fn create_transaction(
                 // Dividend: shares unchanged.
                 // Adjust avg_cost only when the market setting is enabled.
                 let new_avg = if adjust && current_shares > 0.0 {
-                    ((current_shares * current_avg_cost - total_amount) / current_shares).max(0.0)
+                    (current_shares * current_avg_cost - total_amount) / current_shares
                 } else {
                     current_avg_cost
                 };
@@ -156,7 +156,7 @@ pub fn create_transaction(
                 let remaining = current_shares - shares;
                 let new_avg = if adjust {
                     if remaining > 0.0 {
-                        ((current_shares * current_avg_cost - total_amount) / remaining).max(0.0)
+                        (current_shares * current_avg_cost - total_amount) / remaining
                     } else {
                         0.0
                     }
@@ -361,7 +361,7 @@ pub fn update_transaction(
                     let total_cost = cur_shares * cur_avg_cost
                         - old_txn.shares * old_txn.price
                         - old_txn.commission;
-                    (total_cost / new_shares).max(0.0)
+                    total_cost / new_shares
                 } else {
                     0.0
                 };
@@ -438,7 +438,7 @@ pub fn update_transaction(
                 // Dividend: shares unchanged.
                 // Adjust avg_cost only when the market setting is enabled.
                 let new_avg = if adjust && cur_shares > 0.0 {
-                    ((cur_shares * cur_avg_cost - total_amount) / cur_shares).max(0.0)
+                    (cur_shares * cur_avg_cost - total_amount) / cur_shares
                 } else {
                     cur_avg_cost
                 };
@@ -449,7 +449,7 @@ pub fn update_transaction(
                 let remaining = cur_shares - shares;
                 let new_avg = if adjust {
                     if remaining > 0.0 {
-                        ((cur_shares * cur_avg_cost - total_amount) / remaining).max(0.0)
+                        (cur_shares * cur_avg_cost - total_amount) / remaining
                     } else {
                         0.0
                     }
@@ -556,7 +556,7 @@ pub fn delete_transaction(db: State<Database>, id: String) -> Result<(), String>
                         let total_cost = cur_shares * cur_avg_cost
                             - txn.shares * txn.price
                             - txn.commission;
-                        (total_cost / new_shares).max(0.0)
+                        total_cost / new_shares
                     } else {
                         0.0
                     };
@@ -705,7 +705,7 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                     let remaining = shares - tx.shares;
                     if adjust {
                         avg_cost = if remaining > 0.0 {
-                            ((shares * avg_cost - tx.total_amount) / remaining).max(0.0)
+                            (shares * avg_cost - tx.total_amount) / remaining
                         } else {
                             0.0
                         };
@@ -714,8 +714,7 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 }
                 "PAY" => {
                     if adjust && shares > 0.0 {
-                        avg_cost =
-                            ((shares * avg_cost - tx.total_amount) / shares).max(0.0);
+                        avg_cost = (shares * avg_cost - tx.total_amount) / shares;
                     }
                     // shares unchanged for PAY
                 }
