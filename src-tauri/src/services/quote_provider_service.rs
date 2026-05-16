@@ -101,15 +101,23 @@ pub fn update_quote_provider_config(
 /// Reads from the single-row `quote_provider_config` table.
 /// Defaults: CN = true, US = false, HK = false.
 pub fn market_adjusts_sell_pay_cost(conn: &rusqlite::Connection, market: &str) -> bool {
-    let col = match market {
-        "CN" => "cn_adjust_sell_pay_cost",
-        "US" => "us_adjust_sell_pay_cost",
-        "HK" => "hk_adjust_sell_pay_cost",
-        _ => return true, // unknown market: safe default
+    // Map market to a fixed SQL query — never interpolate user input into SQL.
+    let (query, default_val): (&str, i64) = match market {
+        "CN" => (
+            "SELECT cn_adjust_sell_pay_cost FROM quote_provider_config WHERE id = 1",
+            1,
+        ),
+        "US" => (
+            "SELECT us_adjust_sell_pay_cost FROM quote_provider_config WHERE id = 1",
+            0,
+        ),
+        "HK" => (
+            "SELECT hk_adjust_sell_pay_cost FROM quote_provider_config WHERE id = 1",
+            0,
+        ),
+        _ => return true, // unknown market: safe default (adjust)
     };
-    let default_val: i64 = if market == "CN" { 1 } else { 0 };
-    let query = format!("SELECT {} FROM quote_provider_config WHERE id = 1", col);
-    conn.query_row(&query, [], |row| row.get::<_, i64>(0))
+    conn.query_row(query, [], |row| row.get::<_, i64>(0))
         .unwrap_or(default_val)
         != 0
 }

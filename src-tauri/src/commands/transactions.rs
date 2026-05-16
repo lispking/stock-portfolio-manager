@@ -679,7 +679,7 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 "OPEN" => {
                     // Initial position entry: set state directly.
                     shares = tx.shares;
-                    avg_cost = if tx.price > 0.0 { tx.price } else { avg_cost };
+                    avg_cost = tx.price; // 0.0 price is valid for zero-cost positions
                 }
                 "BUY" => {
                     let new_total = shares + tx.shares;
