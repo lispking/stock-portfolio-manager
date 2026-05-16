@@ -72,6 +72,7 @@ export default function TransactionsPage() {
   const [accountHoldings, setAccountHoldings] = useState<Holding[]>([]);
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
+  const [filterSymbol, setFilterSymbol] = useState<string | undefined>(undefined);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [excelImportModalOpen, setExcelImportModalOpen] = useState(false);
   const [csvImportModalOpen, setCsvImportModalOpen] = useState(false);
@@ -245,10 +246,26 @@ export default function TransactionsPage() {
 
   const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a.name]));
 
-  // Apply account filter
+  // Apply account + symbol filters
   const displayData = useMemo(() => {
-    if (!filterAccountId) return transactions;
-    return transactions.filter((t) => t.account_id === filterAccountId);
+    let data = transactions;
+    if (filterAccountId) data = data.filter((t) => t.account_id === filterAccountId);
+    if (filterSymbol) data = data.filter((t) => t.symbol === filterSymbol);
+    return data;
+  }, [transactions, filterAccountId, filterSymbol]);
+
+  // Unique stock options for the symbol filter (scoped to account if selected)
+  const symbolFilterOptions = useMemo(() => {
+    const base = filterAccountId ? transactions.filter((t) => t.account_id === filterAccountId) : transactions;
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    for (const t of base) {
+      if (!seen.has(t.symbol)) {
+        seen.add(t.symbol);
+        options.push({ value: t.symbol, label: t.name ? `${t.symbol} ${t.name}` : t.symbol });
+      }
+    }
+    return options;
   }, [transactions, filterAccountId]);
 
   const columns = [
@@ -308,6 +325,13 @@ export default function TransactionsPage() {
       dataIndex: "total_amount",
       key: "total_amount",
       width: 140,
+      render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
+    },
+    {
+      title: "手续费",
+      dataIndex: "commission",
+      key: "commission",
+      width: 110,
       render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
     },
     {
@@ -422,7 +446,7 @@ export default function TransactionsPage() {
             <Text type="secondary">按账户:</Text>
             <Select
               value={filterAccountId}
-              onChange={setFilterAccountId}
+              onChange={(v) => { setFilterAccountId(v); setFilterSymbol(undefined); }}
               placeholder="全部账户"
               allowClear
               style={{ width: 180 }}
@@ -434,6 +458,21 @@ export default function TransactionsPage() {
               ))}
             </Select>
           </Space>
+          {filterAccountId && (
+            <Space>
+              <Text type="secondary">按股票:</Text>
+              <Select
+                value={filterSymbol}
+                onChange={setFilterSymbol}
+                placeholder="全部股票"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                style={{ width: 200 }}
+                options={symbolFilterOptions}
+              />
+            </Space>
+          )}
         </Space>
       </div>
 
