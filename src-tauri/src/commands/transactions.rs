@@ -136,7 +136,7 @@ pub fn create_transaction(
             let (new_shares, new_avg_cost) = if transaction_type == "BUY" {
                 let total_shares = current_shares + shares;
                 let new_avg = if total_shares > 0.0 {
-                    (current_shares * current_avg_cost + shares * price) / total_shares
+                    (current_shares * current_avg_cost + shares * price + commission) / total_shares
                 } else {
                     price
                 };
@@ -354,10 +354,13 @@ pub fn update_transaction(
             let old_adjust = market_adjusts_sell_pay_cost(&conn, &old_txn.market);
 
             let (rev_shares, rev_avg_cost) = if old_txn.transaction_type == "BUY" {
-                // Reverse a BUY: subtract shares
+                // Reverse a BUY: subtract shares and remove the commission that was
+                // added to the cost basis when this buy was recorded.
                 let new_shares = cur_shares - old_txn.shares;
                 let new_avg = if new_shares > 0.0 {
-                    let total_cost = cur_shares * cur_avg_cost - old_txn.shares * old_txn.price;
+                    let total_cost = cur_shares * cur_avg_cost
+                        - old_txn.shares * old_txn.price
+                        - old_txn.commission;
                     (total_cost / new_shares).max(0.0)
                 } else {
                     0.0
@@ -426,7 +429,7 @@ pub fn update_transaction(
             let (new_shares, new_avg_cost) = if transaction_type == "BUY" {
                 let total_shares = cur_shares + shares;
                 let new_avg = if total_shares > 0.0 {
-                    (cur_shares * cur_avg_cost + shares * price) / total_shares
+                    (cur_shares * cur_avg_cost + shares * price + commission) / total_shares
                 } else {
                     price
                 };
@@ -546,10 +549,13 @@ pub fn delete_transaction(db: State<Database>, id: String) -> Result<(), String>
             if let Ok((cur_shares, cur_avg_cost)) = holding_data {
                 let adjust = market_adjusts_sell_pay_cost(&conn, &txn.market);
                 let (rev_shares, rev_avg_cost) = if txn.transaction_type == "BUY" {
-                    // Reverse a BUY: subtract shares
+                    // Reverse a BUY: subtract shares and remove the commission that was
+                    // added to the cost basis when this buy was recorded.
                     let new_shares = cur_shares - txn.shares;
                     let new_avg = if new_shares > 0.0 {
-                        let total_cost = cur_shares * cur_avg_cost - txn.shares * txn.price;
+                        let total_cost = cur_shares * cur_avg_cost
+                            - txn.shares * txn.price
+                            - txn.commission;
                         (total_cost / new_shares).max(0.0)
                     } else {
                         0.0
@@ -644,7 +650,7 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
         // Load all transactions for this holding, oldest first.
         let mut tx_stmt = conn
             .prepare(
-                "SELECT transaction_type, shares, price, total_amount \
+                "SELECT transaction_type, shares, price, total_amount, commission \
                  FROM transactions \
                  WHERE holding_id = ?1 \
                  ORDER BY traded_at ASC, created_at ASC",
@@ -656,6 +662,7 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
             shares: f64,
             price: f64,
             total_amount: f64,
+            commission: f64,
         }
 
         let txs: Vec<TxRow> = tx_stmt
@@ -665,6 +672,7 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                     shares: row.get(1)?,
                     price: row.get(2)?,
                     total_amount: row.get(3)?,
+                    commission: row.get(4)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -684,8 +692,12 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 "BUY" => {
                     let new_total = shares + tx.shares;
                     if new_total > 0.0 {
-                        avg_cost =
-                            (shares * avg_cost + tx.shares * tx.price) / new_total;
+                        // Include commission in cost basis, consistent with
+                        // create_transaction / update_transaction.
+                        avg_cost = (shares * avg_cost
+                            + tx.shares * tx.price
+                            + tx.commission)
+                            / new_total;
                     }
                     shares = new_total;
                 }

@@ -525,7 +525,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                 let (new_shares, new_avg_cost) = if tx_type == "BUY" {
                     let total = cur_shares + shares;
                     let avg = if total > 0.0 {
-                        (cur_shares * cur_avg_cost + shares * price) / total
+                        (cur_shares * cur_avg_cost + shares * price + commission) / total
                     } else {
                         price
                     };
