@@ -277,14 +277,11 @@ export default function TransactionsPage() {
       title: "日期",
       dataIndex: "traded_at",
       key: "traded_at",
-      width: 160,
       render: (date: string) => dayjs(date).format("YYYY-MM-DD HH:mm"),
     },
     {
       title: "股票",
       key: "stock",
-      width: 220,
-      ellipsis: true,
       ...(filterAccountId ? {
         filters: symbolColumnFilters,
         filterSearch: true,
@@ -309,7 +306,6 @@ export default function TransactionsPage() {
       title: "类型",
       dataIndex: "transaction_type",
       key: "transaction_type",
-      width: 65,
       render: (type: TransactionType) => (
         <Tag color={type === "BUY" ? "green" : type === "OPEN" ? "blue" : type === "PAY" ? "orange" : "red"}>
           {type === "BUY" ? "买入" : type === "OPEN" ? "建仓" : type === "PAY" ? "分红" : "卖出"}
@@ -320,28 +316,24 @@ export default function TransactionsPage() {
       title: "股数",
       dataIndex: "shares",
       key: "shares",
-      width: 90,
       render: (v: number) => v.toLocaleString(),
     },
     {
       title: "价格",
       dataIndex: "price",
       key: "price",
-      width: 115,
       render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
     },
     {
       title: "总金额",
       dataIndex: "total_amount",
       key: "total_amount",
-      width: 140,
       render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
     },
     {
       title: "手续费",
       dataIndex: "commission",
       key: "commission",
-      width: 90,
       render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
     },
     {
@@ -477,6 +469,7 @@ export default function TransactionsPage() {
         rowKey="id"
         loading={loading}
         pagination={{ pageSize: 20 }}
+        scroll={{ x: "max-content" }}
         onChange={(_pagination, filters) => {
           const stockFilters = filters["stock"];
           setStockColumnFilters(stockFilters ? (stockFilters as string[]) : null);
