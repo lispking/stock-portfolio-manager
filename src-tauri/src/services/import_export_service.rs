@@ -528,7 +528,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                     };
                     (total, avg)
                 } else if tx_type == "PAY" {
-                    // Dividend: shares unchanged; avg_cost reduced by dividend per share
+                    // Dividend: shares unchanged; avg_cost reduced by dividend amount per share.
                     let new_avg = if cur_shares > 0.0 {
                         ((cur_shares * cur_avg_cost - total_amount) / cur_shares).max(0.0)
                     } else {
@@ -536,8 +536,14 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                     };
                     (cur_shares, new_avg)
                 } else {
-                    // SELL: shares decrease, avg_cost unchanged
-                    (cur_shares - shares, cur_avg_cost)
+                    // SELL: shares decrease; sale proceeds reduce total cost basis (net cost method).
+                    let remaining = cur_shares - shares;
+                    let new_avg = if remaining > 0.0 {
+                        ((cur_shares * cur_avg_cost - total_amount) / remaining).max(0.0)
+                    } else {
+                        0.0
+                    };
+                    (remaining, new_avg)
                 };
 
                 if let Err(e) = conn.execute(

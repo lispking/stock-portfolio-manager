@@ -139,7 +139,7 @@ pub fn create_transaction(
                 };
                 (total_shares, new_avg)
             } else if transaction_type == "PAY" {
-                // Dividend: shares unchanged; avg_cost reduced by dividend per share
+                // Dividend: shares unchanged; avg_cost reduced by dividend amount per share.
                 let new_avg = if current_shares > 0.0 {
                     ((current_shares * current_avg_cost - total_amount) / current_shares).max(0.0)
                 } else {
@@ -147,8 +147,14 @@ pub fn create_transaction(
                 };
                 (current_shares, new_avg)
             } else {
-                // SELL: shares decrease, avg_cost unchanged
-                (current_shares - shares, current_avg_cost)
+                // SELL: shares decrease; sale proceeds reduce total cost basis (net cost method).
+                let remaining = current_shares - shares;
+                let new_avg = if remaining > 0.0 {
+                    ((current_shares * current_avg_cost - total_amount) / remaining).max(0.0)
+                } else {
+                    0.0
+                };
+                (remaining, new_avg)
             };
 
             let updated_at = chrono::Utc::now().to_rfc3339();
@@ -347,7 +353,7 @@ pub fn update_transaction(
                 };
                 (new_shares, new_avg)
             } else if old_txn.transaction_type == "PAY" {
-                // Reverse a dividend: add back dividend amount to avg_cost
+                // Reverse a dividend: add back dividend amount to total cost.
                 let rev_avg = if cur_shares > 0.0 {
                     (cur_shares * cur_avg_cost + old_txn.total_amount) / cur_shares
                 } else {
@@ -355,8 +361,14 @@ pub fn update_transaction(
                 };
                 (cur_shares, rev_avg)
             } else {
-                // Reverse a SELL: add shares back, avg_cost unchanged
-                (cur_shares + old_txn.shares, cur_avg_cost)
+                // Reverse a SELL: add shares back; add sale proceeds back to total cost (net cost method).
+                let new_shares = cur_shares + old_txn.shares;
+                let rev_avg = if new_shares > 0.0 {
+                    (cur_shares * cur_avg_cost + old_txn.total_amount) / new_shares
+                } else {
+                    cur_avg_cost
+                };
+                (new_shares, rev_avg)
             };
 
             let updated_at = chrono::Utc::now().to_rfc3339();
@@ -413,7 +425,14 @@ pub fn update_transaction(
                 };
                 (cur_shares, new_avg)
             } else {
-                (cur_shares - shares, cur_avg_cost)
+                // SELL: shares decrease; sale proceeds reduce total cost basis (net cost method).
+                let remaining = cur_shares - shares;
+                let new_avg = if remaining > 0.0 {
+                    ((cur_shares * cur_avg_cost - total_amount) / remaining).max(0.0)
+                } else {
+                    0.0
+                };
+                (remaining, new_avg)
             };
 
             let updated_at = chrono::Utc::now().to_rfc3339();
@@ -523,8 +542,14 @@ pub fn delete_transaction(db: State<Database>, id: String) -> Result<(), String>
                     };
                     (cur_shares, rev_avg)
                 } else {
-                    // Reverse a SELL: add shares back, avg_cost unchanged
-                    (cur_shares + txn.shares, cur_avg_cost)
+                    // Reverse a SELL: add shares back; add sale proceeds back to total cost (net cost method).
+                    let new_shares = cur_shares + txn.shares;
+                    let rev_avg = if new_shares > 0.0 {
+                        (cur_shares * cur_avg_cost + txn.total_amount) / new_shares
+                    } else {
+                        cur_avg_cost
+                    };
+                    (new_shares, rev_avg)
                 };
                 let updated_at = chrono::Utc::now().to_rfc3339();
                 conn.execute(
