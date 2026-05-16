@@ -124,10 +124,10 @@ export default function GeneralSettings() {
     <div className="space-y-6">
       {isXueqiuUsed && (
         <Card title="雪球 Cookie 设置">
-          <Form layout="vertical" style={{ maxWidth: 680 }}>
+          <Form layout="vertical" style={{ maxWidth: 540 }}>
             <Form.Item
-              label="雪球 Cookie"
-              extra="登录 xueqiu.com → F12 → Application → Cookies → 复制 xq_a_token 的值"
+              label="雪球访问 Cookie (xq_a_token)"
+              extra="浏览器登录 xueqiu.com → F12 → Application → Cookies → 复制 xq_a_token 的值"
             >
               <Input
                 placeholder="例如：xq_a_token=6a7dc04b2c6770dc8e..."
@@ -153,7 +153,7 @@ export default function GeneralSettings() {
             </Form.Item>
           </Form>
           <Paragraph type="secondary">
-            雪球历史行情 API 需要 Cookie 和用户 ID 才能获取数据。两者都需要填写。Cookie 和用户 ID 可能会过期，届时需要重新获取。
+            雪球历史行情 API 需要访问 Cookie 和用户 ID 才能获取数据。两者都需要填写。雪球访问 Cookie 可能会过期，届时需要重新获取。
           </Paragraph>
         </Card>
       )}
