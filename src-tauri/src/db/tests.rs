@@ -862,4 +862,154 @@ mod tests {
         let b3 = get_cash_balance(&conn, &acct_id, "USD").unwrap();
         assert!((b3 - 94388.0).abs() < 1e-9);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Net-cost SELL formula tests (adjust = true, commission included)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Apply the SELL net-cost formula directly:
+    ///   remaining_cost = (shares × avg_cost) - (total_amount - commission)
+    ///   new_avg = remaining_cost / remaining_shares
+    ///
+    /// `total_amount` is gross proceeds (shares_sold × price). Adding `commission`
+    /// back effectively subtracts only net proceeds from the cost basis, because
+    /// the commission paid is a trading cost that the seller does not receive.
+    fn apply_sell_net_cost(shares: f64, avg_cost: f64, sold: f64, total_amount: f64, commission: f64) -> f64 {
+        let remaining = shares - sold;
+        if remaining > 0.0 {
+            (shares * avg_cost - total_amount + commission) / remaining
+        } else {
+            0.0
+        }
+    }
+
+    /// Reverse the SELL net-cost adjustment:
+    ///   Adds back the net proceeds (total_amount - commission) that were previously
+    ///   subtracted from the cost basis, and restores the pre-SELL share count.
+    ///   rev_avg = (cur_total_cost + net_proceeds) / (cur_shares + sold_shares)
+    ///           = (cur_shares × cur_avg_cost + total_amount - commission) / new_shares
+    fn reverse_sell_net_cost(cur_shares: f64, cur_avg_cost: f64, sold: f64, total_amount: f64, commission: f64) -> f64 {
+        let new_shares = cur_shares + sold;
+        if new_shares > 0.0 {
+            (cur_shares * cur_avg_cost + total_amount - commission) / new_shares
+        } else {
+            0.0
+        }
+    }
+
+    #[test]
+    fn test_sell_net_cost_reduces_by_net_proceeds() {
+        // BUY 100 shares at ¥10 with ¥5 commission → avg_cost = (1000+5)/100 = 10.05
+        let shares = 100.0_f64;
+        let avg_cost = (100.0 * 10.0 + 5.0) / 100.0; // 10.05
+
+        // SELL 40 shares at ¥15, commission ¥6
+        let sold = 40.0_f64;
+        let total_amount = sold * 15.0; // 600
+        let commission = 6.0_f64;
+
+        // Net proceeds = 600 - 6 = 594
+        // Remaining total cost = 100*10.05 - 594 = 1005 - 594 = 411
+        // new_avg = 411 / 60 = 6.85
+        let expected = (shares * avg_cost - total_amount + commission) / (shares - sold);
+        let got = apply_sell_net_cost(shares, avg_cost, sold, total_amount, commission);
+        assert!((got - expected).abs() < 1e-9);
+        // Verify numerical value
+        assert!((got - 6.85).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_sell_net_cost_zero_commission() {
+        // When commission == 0, formula reduces to (shares * avg_cost - total_amount) / remaining,
+        // which was the old formula. Verify backward compatibility.
+        let shares = 100.0_f64;
+        let avg_cost = 10.0_f64;
+        let sold = 40.0_f64;
+        let total_amount = sold * 15.0; // 600
+        let commission = 0.0_f64;
+
+        let got = apply_sell_net_cost(shares, avg_cost, sold, total_amount, commission);
+        // (1000 - 600) / 60 ≈ 6.6667
+        let expected = (shares * avg_cost - total_amount) / (shares - sold);
+        assert!((got - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_sell_net_cost_all_shares_zeroes_avg_cost() {
+        // Selling all shares should yield avg_cost = 0.0
+        let shares = 50.0_f64;
+        let avg_cost = 20.0_f64;
+        let sold = 50.0_f64;
+        let total_amount = sold * 25.0;
+        let commission = 10.0_f64;
+
+        let got = apply_sell_net_cost(shares, avg_cost, sold, total_amount, commission);
+        assert!((got - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_reverse_sell_restores_original_avg_cost() {
+        // Start: 100 shares at avg_cost 10.05
+        let shares = 100.0_f64;
+        let avg_cost = 10.05_f64;
+
+        // Apply SELL: sell 40 at ¥15, commission ¥6
+        let sold = 40.0_f64;
+        let total_amount = sold * 15.0; // 600
+        let commission = 6.0_f64;
+        let after_avg = apply_sell_net_cost(shares, avg_cost, sold, total_amount, commission);
+        let after_shares = shares - sold; // 60
+
+        // Reverse the SELL — must recover original avg_cost
+        let recovered_avg = reverse_sell_net_cost(after_shares, after_avg, sold, total_amount, commission);
+        assert!((recovered_avg - avg_cost).abs() < 1e-9, "recovered={recovered_avg}, expected={avg_cost}");
+    }
+
+    #[test]
+    fn test_reverse_sell_round_trips_with_various_commissions() {
+        for &commission in &[0.0_f64, 5.0, 10.0, 25.5] {
+            let shares = 200.0_f64;
+            let avg_cost = 50.0_f64;
+            let sold = 80.0_f64;
+            let total_amount = sold * 60.0; // 4800
+
+            let after_avg = apply_sell_net_cost(shares, avg_cost, sold, total_amount, commission);
+            let after_shares = shares - sold;
+            let recovered = reverse_sell_net_cost(after_shares, after_avg, sold, total_amount, commission);
+            assert!(
+                (recovered - avg_cost).abs() < 1e-9,
+                "commission={commission}: recovered={recovered}, expected={avg_cost}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_recalculate_sell_net_cost_inline() {
+        // Simulate the recalculate_holdings_cost SELL branch inline.
+        // BUY 100 shares at ¥10, commission ¥5 → total cost = 1005, avg_cost = 10.05
+        let mut shares = 0.0_f64;
+        let mut avg_cost = 0.0_f64;
+
+        // BUY
+        let buy_shares = 100.0_f64;
+        let buy_price = 10.0_f64;
+        let buy_commission = 5.0_f64;
+        let new_total = shares + buy_shares;
+        avg_cost = (shares * avg_cost + buy_shares * buy_price + buy_commission) / new_total;
+        shares = new_total;
+        assert!((avg_cost - 10.05).abs() < 1e-9);
+
+        // SELL 40 shares at ¥15, commission ¥6  (adjust = true)
+        let sell_shares = 40.0_f64;
+        let total_amount = sell_shares * 15.0_f64; // 600
+        let sell_commission = 6.0_f64;
+        let remaining = shares - sell_shares;
+        avg_cost = (shares * avg_cost - total_amount + sell_commission) / remaining;
+        shares = remaining;
+
+        // Remaining total cost = 1005 - (600 - 6) = 1005 - 594 = 411
+        // avg_cost = 411 / 60 = 6.85
+        assert!((shares - 60.0).abs() < 1e-9);
+        assert!((avg_cost - 6.85).abs() < 1e-9, "avg_cost={avg_cost}");
+    }
 }

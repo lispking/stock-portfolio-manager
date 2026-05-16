@@ -153,10 +153,12 @@ pub fn create_transaction(
             } else {
                 // SELL: shares always decrease.
                 // Adjust avg_cost (net cost method) only when the market setting is enabled.
+                // The commission paid on a sale is a trading cost, so net proceeds are
+                // total_amount - commission. The remaining cost basis is reduced by net proceeds.
                 let remaining = current_shares - shares;
                 let new_avg = if adjust {
                     if remaining > 0.0 {
-                        (current_shares * current_avg_cost - total_amount) / remaining
+                        (current_shares * current_avg_cost - total_amount + commission) / remaining
                     } else {
                         0.0
                     }
@@ -378,9 +380,11 @@ pub fn update_transaction(
             } else {
                 // Reverse a SELL: add shares back.
                 // Undo the net-cost adjustment only if the market setting is enabled.
+                // Forward SELL reduced cost by (total_amount - commission), so
+                // reversal adds back (total_amount - commission).
                 let new_shares = cur_shares + old_txn.shares;
                 let rev_avg = if old_adjust && new_shares > 0.0 {
-                    (cur_shares * cur_avg_cost + old_txn.total_amount) / new_shares
+                    (cur_shares * cur_avg_cost + old_txn.total_amount - old_txn.commission) / new_shares
                 } else {
                     cur_avg_cost
                 };
@@ -446,10 +450,11 @@ pub fn update_transaction(
             } else {
                 // SELL: shares always decrease.
                 // Adjust avg_cost (net cost method) only when the market setting is enabled.
+                // Net proceeds = total_amount - commission; remaining cost is reduced by net proceeds.
                 let remaining = cur_shares - shares;
                 let new_avg = if adjust {
                     if remaining > 0.0 {
-                        (cur_shares * cur_avg_cost - total_amount) / remaining
+                        (cur_shares * cur_avg_cost - total_amount + commission) / remaining
                     } else {
                         0.0
                     }
@@ -571,9 +576,11 @@ pub fn delete_transaction(db: State<Database>, id: String) -> Result<(), String>
                     (cur_shares, rev_avg)
                 } else {
                     // Reverse a SELL: add shares back; undo net-cost adjustment only if enabled.
+                    // Forward SELL reduced cost by (total_amount - commission), so
+                    // reversal adds back (total_amount - commission).
                     let new_shares = cur_shares + txn.shares;
                     let rev_avg = if adjust && new_shares > 0.0 {
-                        (cur_shares * cur_avg_cost + txn.total_amount) / new_shares
+                        (cur_shares * cur_avg_cost + txn.total_amount - txn.commission) / new_shares
                     } else {
                         cur_avg_cost
                     };
@@ -704,8 +711,10 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 "SELL" => {
                     let remaining = shares - tx.shares;
                     if adjust {
+                        // Net proceeds = total_amount - commission; remaining cost
+                        // is reduced by net proceeds (commission is a trading cost).
                         avg_cost = if remaining > 0.0 {
-                            (shares * avg_cost - tx.total_amount) / remaining
+                            (shares * avg_cost - tx.total_amount + tx.commission) / remaining
                         } else {
                             0.0
                         };
