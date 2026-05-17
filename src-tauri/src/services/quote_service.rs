@@ -12,9 +12,6 @@ use std::time::{Duration, Instant};
 /// Cash symbols follow the pattern `$CASH-{CURRENCY}`, e.g. `$CASH-USD`, `$CASH-CNY`, `$CASH-HKD`.
 pub const CASH_SYMBOL_PREFIX: &str = "$CASH-";
 
-/// All recognised cash symbols.
-pub const CASH_SYMBOLS: [&str; 3] = ["$CASH-USD", "$CASH-CNY", "$CASH-HKD"];
-
 /// Returns `true` if the symbol represents a cash holding.
 pub fn is_cash_symbol(symbol: &str) -> bool {
     symbol.starts_with(CASH_SYMBOL_PREFIX)
@@ -72,7 +69,7 @@ pub fn make_cash_quote(symbol: &str, market: &str) -> StockQuote {
 
 struct CachedQuote {
     quote: StockQuote,
-    cached_at: Instant,
+    _cached_at: Instant,
 }
 
 /// In-memory cache for stock quotes, keyed by symbol.
@@ -107,7 +104,7 @@ impl QuoteCache {
             quote.symbol.clone(),
             CachedQuote {
                 quote,
-                cached_at: Instant::now(),
+                _cached_at: Instant::now(),
             },
         );
     }
@@ -121,7 +118,7 @@ impl QuoteCache {
                 q.symbol.clone(),
                 CachedQuote {
                     quote: q.clone(),
-                    cached_at: now,
+                    _cached_at: now,
                 },
             );
         }
@@ -214,19 +211,6 @@ fn deduplicate_symbols(symbols: Vec<(String, String)>) -> Vec<(String, String)> 
         .into_iter()
         .filter(|(symbol, _)| seen.insert(symbol.clone()))
         .collect()
-}
-
-/// Batch fetch quotes using the cache. Only fetches symbols that are
-/// missing from the cache, and updates the cache with fresh results.
-/// Falls back to stale cache entries on network errors for individual symbols.
-/// When `force_refresh` is true the cache is bypassed and all symbols are
-/// fetched from the upstream API.
-pub async fn fetch_quotes_batch_cached(
-    cache: &QuoteCache,
-    symbols: Vec<(String, String)>,
-    force_refresh: bool,
-) -> Result<Vec<StockQuote>, String> {
-    fetch_quotes_batch_cached_with_providers(cache, symbols, "yahoo", "yahoo", "eastmoney", force_refresh).await
 }
 
 /// Batch fetch quotes using the cache with specified providers.
@@ -411,6 +395,7 @@ pub async fn fetch_yahoo_quote(symbol: &str, market: &str) -> Result<StockQuote,
 }
 
 /// Fetch a US stock quote using the configured provider.
+#[cfg(test)]
 pub async fn fetch_us_quote(symbol: &str) -> Result<StockQuote, String> {
     fetch_us_quote_with_provider(symbol, "eastmoney").await
 }
@@ -425,11 +410,6 @@ pub async fn fetch_us_quote_with_provider(symbol: &str, provider: &str) -> Resul
             fetch_yahoo_quote(&yahoo_symbol, "US").await
         }
     }
-}
-
-/// Fetch a HK stock quote using the configured provider. Appends ".HK" if not present for Yahoo.
-pub async fn fetch_hk_quote(symbol: &str) -> Result<StockQuote, String> {
-    fetch_hk_quote_with_provider(symbol, "eastmoney").await
 }
 
 /// Fetch a HK stock quote using the specified provider.
@@ -449,6 +429,7 @@ pub async fn fetch_hk_quote_with_provider(symbol: &str, provider: &str) -> Resul
 }
 
 /// Fetch a CN A-share stock quote using East Money.
+#[cfg(test)]
 pub async fn fetch_cn_quote(symbol: &str) -> Result<StockQuote, String> {
     fetch_cn_quote_with_provider(symbol, "eastmoney").await
 }
@@ -513,7 +494,6 @@ fn parse_eastmoney_body(body: &str, symbol: &str) -> Result<EastMoneyResponse, S
 /// East Money API response for a single stock quote.
 #[derive(Debug, Deserialize)]
 struct EastMoneyResponse {
-    rc: Option<i32>,
     data: Option<EastMoneyData>,
 }
 
@@ -534,8 +514,6 @@ struct EastMoneyData {
     /// Volume (lots / 手) — stored as f64 because the API may return
     /// the value with a decimal point (e.g. `30279.0`).
     f47: Option<f64>,
-    /// Stock code (e.g. "600519")
-    f57: Option<String>,
     /// Stock name (e.g. "贵州茅台")
     f58: Option<String>,
     /// Previous close
@@ -553,7 +531,7 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
     let symbol = symbol.to_lowercase();
     let secid = to_eastmoney_secid(&symbol)?;
     let url = format!(
-        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f57,f58,f60,f169,f170&secid={}",
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
         secid
     );
 
@@ -582,7 +560,7 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
 async fn fetch_eastmoney_us_quote(symbol: &str) -> Result<StockQuote, String> {
     let secid = to_eastmoney_us_secid(symbol);
     let url = format!(
-        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f57,f58,f60,f169,f170&secid={}",
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
         secid
     );
 
@@ -611,7 +589,7 @@ async fn fetch_eastmoney_us_quote(symbol: &str) -> Result<StockQuote, String> {
 async fn fetch_eastmoney_hk_quote(symbol: &str) -> Result<StockQuote, String> {
     let secid = to_eastmoney_hk_secid(symbol)?;
     let url = format!(
-        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f57,f58,f60,f169,f170&secid={}",
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
         secid
     );
 
@@ -1005,8 +983,6 @@ struct XueqiuData {
 /// Xueqiu quote fields.
 #[derive(Debug, Deserialize)]
 struct XueqiuQuote {
-    /// Stock symbol (e.g. "SH600519", "AAPL", "00700")
-    symbol: Option<String>,
     /// Stock name (e.g. "贵州茅台", "Apple Inc.")
     name: Option<String>,
     /// Current price
@@ -1246,14 +1222,6 @@ async fn fetch_xueqiu_hk_quote(symbol: &str) -> Result<StockQuote, String> {
 
     let resp = parse_xueqiu_body(&body, symbol)?;
     parse_xueqiu_quote(symbol, "HK", resp)
-}
-
-/// Batch fetch quotes for multiple symbols with their markets.
-/// Market is "US", "CN", or "HK".
-pub async fn fetch_quotes_batch(
-    symbols: Vec<(String, String)>,
-) -> Result<Vec<StockQuote>, String> {
-    fetch_quotes_batch_with_providers(symbols, "eastmoney", "eastmoney", "eastmoney").await
 }
 
 /// Batch fetch quotes using the specified providers for US, HK and CN markets.
@@ -1733,7 +1701,6 @@ mod tests {
 
     // Helper: build a synthetic East Money JSON response.
     fn make_eastmoney_response(
-        code: &str,
         name: &str,
         current: f64,
         prev_close: f64,
@@ -1744,13 +1711,11 @@ mod tests {
         change_pct: f64,
     ) -> EastMoneyResponse {
         EastMoneyResponse {
-            rc: Some(0),
             data: Some(EastMoneyData {
                 f43: Some(current),
                 f44: Some(high),
                 f45: Some(low),
                 f47: Some(volume),
-                f57: Some(code.to_string()),
                 f58: Some(name.to_string()),
                 f60: Some(prev_close),
                 f169: Some(change),
@@ -1762,7 +1727,6 @@ mod tests {
     #[test]
     fn test_parse_eastmoney_quote_valid() {
         let resp = make_eastmoney_response(
-            "600519",
             "贵州茅台",
             1710.50,
             1690.00,
@@ -1790,7 +1754,6 @@ mod tests {
     #[test]
     fn test_parse_eastmoney_quote_no_data() {
         let resp = EastMoneyResponse {
-            rc: Some(0),
             data: None,
         };
         let result = parse_eastmoney_quote("sh999999", "CN", resp);
@@ -1801,13 +1764,11 @@ mod tests {
     #[test]
     fn test_parse_eastmoney_quote_missing_price() {
         let resp = EastMoneyResponse {
-            rc: Some(0),
             data: Some(EastMoneyData {
                 f43: None,
                 f44: Some(1720.00),
                 f45: Some(1685.00),
                 f47: Some(12345.0),
-                f57: Some("600519".to_string()),
                 f58: Some("贵州茅台".to_string()),
                 f60: Some(1690.00),
                 f169: Some(20.50),
@@ -1822,7 +1783,6 @@ mod tests {
     #[test]
     fn test_parse_eastmoney_quote_change_calculation() {
         let resp = make_eastmoney_response(
-            "600519",
             "贵州茅台",
             1100.00,
             1000.00,
@@ -1842,7 +1802,6 @@ mod tests {
     #[test]
     fn test_parse_eastmoney_quote_symbol_stored_as_given() {
         let resp = make_eastmoney_response(
-            "600519",
             "贵州茅台",
             1710.50,
             1690.00,
@@ -1868,7 +1827,6 @@ mod tests {
         let lower = mixed.to_lowercase();
         assert_eq!(lower, "sh600519");
         let resp = make_eastmoney_response(
-            "600519",
             "贵州茅台",
             1710.50,
             1690.00,
@@ -1936,7 +1894,6 @@ mod tests {
     #[test]
     fn test_parse_eastmoney_quote_us_market() {
         let resp = make_eastmoney_response(
-            "AAPL",
             "苹果",
             195.50,
             193.00,
@@ -1957,7 +1914,6 @@ mod tests {
     #[test]
     fn test_parse_eastmoney_quote_hk_market() {
         let resp = make_eastmoney_response(
-            "00700",
             "腾讯控股",
             420.00,
             415.00,
@@ -1979,13 +1935,11 @@ mod tests {
     fn test_parse_eastmoney_quote_fallback_change_calculation() {
         // When f169/f170 are missing, change should be computed from price
         let resp = EastMoneyResponse {
-            rc: Some(0),
             data: Some(EastMoneyData {
                 f43: Some(1100.00),
                 f44: Some(1200.00),
                 f45: Some(950.00),
                 f47: Some(99999.0),
-                f57: Some("600519".to_string()),
                 f58: Some("贵州茅台".to_string()),
                 f60: Some(1000.00),
                 f169: None,
@@ -2122,7 +2076,6 @@ mod tests {
             }
         }"#;
         let resp: EastMoneyResponse = serde_json::from_str(json).expect("should parse");
-        assert_eq!(resp.rc, Some(0));
         let data = resp.data.unwrap();
         assert!((data.f43.unwrap() - 1516.0).abs() < 0.001);
         assert!((data.f47.unwrap() - 30279.0).abs() < 0.001);
@@ -2132,7 +2085,6 @@ mod tests {
     fn test_eastmoney_volume_converts_to_u64() {
         // The parse function should convert f64 volume to u64 correctly.
         let resp = make_eastmoney_response(
-            "600519",
             "贵州茅台",
             1516.0,
             1513.0,
@@ -2832,7 +2784,6 @@ mod tests {
         assert_eq!(resp.error_code, Some(0));
         let data = resp.data.unwrap();
         let quote = data.quote.unwrap();
-        assert_eq!(quote.symbol.unwrap(), "SH600519");
         assert!((quote.current.unwrap() - 1725.01).abs() < 0.001);
     }
 

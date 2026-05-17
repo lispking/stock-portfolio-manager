@@ -837,6 +837,7 @@ fn detect_trade_anchor(line: &str) -> Option<(String, String, String)> {
 /// Kept for backward compatibility with existing unit tests.
 ///
 /// Wraps [`detect_trade_anchor`] to return the old `(tx_type, name)` pair.
+#[cfg(test)]
 fn parse_trade_header(line: &str) -> Option<(String, String)> {
     detect_trade_anchor(line).map(|(tx, name, _)| (tx, name))
 }

@@ -110,6 +110,7 @@ pub(crate) struct SubPeriod {
 }
 
 impl SubPeriod {
+    #[cfg(test)]
     pub fn period_return(&self) -> f64 {
         if self.start_value == 0.0 {
             return 0.0;
@@ -119,6 +120,7 @@ impl SubPeriod {
 }
 
 /// Calculate Time-Weighted Return from a slice of sub-periods.
+#[cfg(test)]
 pub fn calculate_twr_from_periods(periods: &[SubPeriod]) -> f64 {
     let product: f64 = periods.iter().map(|p| 1.0 + p.period_return()).product();
     product - 1.0

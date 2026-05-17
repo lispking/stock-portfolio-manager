@@ -259,13 +259,13 @@ pub fn register_window_menu_for_nsapp() {
         return;
     };
     let title = NSString::from_str(l.window);
-    let window_item = match unsafe { main_menu.itemWithTitle(&title) } {
+    let window_item = match main_menu.itemWithTitle(&title) {
         Some(item) => item,
         None => return,
     };
-    let submenu = match unsafe { window_item.submenu() } {
+    let submenu = match window_item.submenu() {
         Some(m) => m,
         None => return,
     };
-    unsafe { app.setWindowsMenu(Some(&submenu)) };
+    app.setWindowsMenu(Some(&submenu));
 }

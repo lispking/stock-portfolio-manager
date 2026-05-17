@@ -87,7 +87,7 @@ pub async fn create_quarterly_snapshot(
 
     // Load all holdings
     struct HoldingRow {
-        id: String,
+        _id: String,
         account_id: String,
         account_name: String,
         symbol: String,
@@ -118,7 +118,7 @@ pub async fn create_quarterly_snapshot(
         let mapped = stmt
             .query_map([], |row| {
                 Ok(HoldingRow {
-                    id: row.get(0)?,
+                    _id: row.get(0)?,
                     account_id: row.get(1)?,
                     account_name: row.get(2)?,
                     symbol: row.get(3)?,

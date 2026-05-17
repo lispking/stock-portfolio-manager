@@ -6,9 +6,9 @@ const RISK_FREE_RATE: f64 = 0.045; // 4.5% US 10-year treasury default
 const TRADING_DAYS_PER_YEAR: f64 = 252.0;
 const CACHE_COVERAGE_THRESHOLD: f64 = 0.5; // require 50% of expected days in cache to skip re-fetch
 use crate::models::performance::{
-    annualise_return, calculate_twr_from_periods, AttributionItem, BenchmarkDataPoint,
+    annualise_return, AttributionItem, BenchmarkDataPoint,
     DrawdownAnalysis, DrawdownPoint, HoldingPerformance, MonthlyReturn, PerformanceSummary,
-    ReturnAttribution, ReturnDataPoint, RiskMetrics, SubPeriod,
+    ReturnAttribution, ReturnDataPoint, RiskMetrics,
 };
 use chrono::NaiveDate;
 
@@ -141,31 +141,6 @@ fn fetch_filtered_daily_values(
     Ok(result)
 }
 
-/// Fetch the portfolio value on its inception (earliest) date.
-fn fetch_inception_value(db: &Database, filter: &PerformanceFilter) -> Result<Option<f64>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    if filter.is_active() {
-        let mut sql = String::from(
-            "SELECT SUM(market_value) FROM daily_holding_snapshots WHERE date = (SELECT MIN(date) FROM daily_holding_snapshots WHERE 1=1",
-        );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        filter.append_where_clauses(&mut sql, &mut params);
-        sql.push(')');
-        // Apply same filters to outer WHERE
-        filter.append_where_clauses(&mut sql, &mut params);
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        let result = conn
-            .query_row(&sql, param_refs.as_slice(), |row| row.get::<_, f64>(0))
-            .ok();
-        return Ok(result);
-    }
-    let mut stmt = conn
-        .prepare("SELECT total_value FROM daily_portfolio_values ORDER BY date ASC LIMIT 1")
-        .map_err(|e| e.to_string())?;
-    let result = stmt.query_row([], |row| row.get::<_, f64>(0)).ok();
-    Ok(result)
-}
-
 /// Fetch the portfolio value on the latest day strictly before `date`.
 /// Used as the baseline for cumulative-return curves so that the first
 /// visible day already shows a non-zero return.
@@ -195,55 +170,6 @@ fn fetch_previous_day_value(db: &Database, date: NaiveDate, filter: &Performance
         )
         .ok();
     Ok(result)
-}
-
-/// Fetch transaction dates (for TWR sub-period boundaries) in the date range.
-fn fetch_transaction_dates(
-    db: &Database,
-    start: NaiveDate,
-    end: NaiveDate,
-    filter: &PerformanceFilter,
-) -> Result<Vec<NaiveDate>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let start_str = start.format("%Y-%m-%d").to_string();
-    let end_str = end.format("%Y-%m-%d").to_string();
-
-    let mut sql = String::from(
-        "SELECT DISTINCT DATE(traded_at) as d
-         FROM transactions
-         WHERE DATE(traded_at) BETWEEN ?1 AND ?2",
-    );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-        Box::new(start_str),
-        Box::new(end_str),
-    ];
-
-    if let Some(ref account_id) = filter.account_id {
-        sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
-        params.push(Box::new(account_id.clone()));
-    }
-
-    sql.push_str(" ORDER BY d ASC");
-
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-    let dates = stmt
-        .query_map(param_refs.as_slice(), |row| {
-            let ds: String = row.get(0)?;
-            Ok(ds)
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    dates
-        .into_iter()
-        .map(|ds| {
-            NaiveDate::parse_from_str(&ds, "%Y-%m-%d")
-                .map_err(|e| format!("bad date '{}': {}", ds, e))
-        })
-        .collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,65 +404,6 @@ pub fn get_performance_summary(
         sharpe_ratio: sharpe,
         return_series,
     })
-}
-
-/// Compute TWR from daily values and known cash-flow dates.
-fn compute_twr(
-    daily: &[(NaiveDate, f64, f64)],
-    tx_dates: &[NaiveDate],
-    _start_value: f64,
-) -> f64 {
-    if daily.is_empty() {
-        return 0.0;
-    }
-
-    // Build boundary dates: start of each sub-period is a transaction date
-    let mut boundaries: std::collections::HashSet<NaiveDate> =
-        tx_dates.iter().cloned().collect();
-    boundaries.insert(daily[0].0);
-    boundaries.insert(daily.last().unwrap().0);
-
-    let mut sorted_boundaries: Vec<NaiveDate> = boundaries.into_iter().collect();
-    sorted_boundaries.sort();
-
-    // Build a date->value map for quick look-up
-    let value_map: std::collections::HashMap<NaiveDate, f64> =
-        daily.iter().map(|(d, v, _)| (*d, *v)).collect();
-
-    // Only keep boundary dates that have actual portfolio values.
-    // Transaction dates without a corresponding snapshot would default to 0.0,
-    // producing a spurious -100% sub-period return.
-    sorted_boundaries.retain(|d| value_map.contains_key(d));
-
-    let mut periods: Vec<SubPeriod> = Vec::new();
-
-    for window in sorted_boundaries.windows(2) {
-        let period_start = window[0];
-        let period_end = window[1];
-
-        let sv = value_map.get(&period_start).copied().unwrap_or(0.0);
-        let ev = value_map.get(&period_end).copied().unwrap_or(0.0);
-
-        if sv > 0.0 {
-            periods.push(SubPeriod {
-                start_value: sv,
-                end_value: ev,
-                cash_flow: 0.0, // simplified: treat snapshot values as post-CF
-            });
-        }
-    }
-
-    if periods.is_empty() {
-        // Fallback: simple return
-        let sv = daily[0].1;
-        let ev = daily.last().unwrap().1;
-        if sv > 0.0 {
-            return (ev - sv) / sv;
-        }
-        return 0.0;
-    }
-
-    calculate_twr_from_periods(&periods)
 }
 
 pub fn get_risk_metrics(
@@ -1287,7 +1154,7 @@ pub fn benchmark_to_return_series(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::performance::parse_date;
+    use crate::models::performance::{calculate_twr_from_periods, parse_date, SubPeriod};
 
     #[test]
     fn test_twr_calculation() {

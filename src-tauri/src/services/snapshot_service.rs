@@ -55,8 +55,8 @@ pub async fn take_daily_snapshot(
         let conn = db.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
-                "SELECT h.id, h.account_id, h.symbol, h.name, h.market,
-                        h.shares, h.avg_cost, h.currency, c.name as category_name
+                "SELECT h.account_id, h.symbol, h.market,
+                        h.shares, h.avg_cost, c.name as category_name
                  FROM holdings h
                  LEFT JOIN categories c ON h.category_id = c.id
                  WHERE h.shares > 0",
@@ -65,28 +65,22 @@ pub async fn take_daily_snapshot(
 
         #[derive(Debug)]
         struct HoldingRow {
-            id: String,
             account_id: String,
             symbol: String,
-            name: String,
             market: String,
             shares: f64,
             avg_cost: f64,
-            currency: String,
             category_name: Option<String>,
         }
 
         let rows = stmt.query_map([], |row| {
             Ok(HoldingRow {
-                id: row.get(0)?,
-                account_id: row.get(1)?,
-                symbol: row.get(2)?,
-                name: row.get(3)?,
-                market: row.get(4)?,
-                shares: row.get(5)?,
-                avg_cost: row.get(6)?,
-                currency: row.get(7)?,
-                category_name: row.get(8)?,
+                account_id: row.get(0)?,
+                symbol: row.get(1)?,
+                market: row.get(2)?,
+                shares: row.get(3)?,
+                avg_cost: row.get(4)?,
+                category_name: row.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -224,36 +218,6 @@ pub async fn take_daily_snapshot(
         }
 
         tx.commit().map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
-/// Check if the latest market-closed day's snapshot has already been taken;
-/// if not, take it.  Uses `last_closed_market_date()` so we never attempt to
-/// snapshot a date whose closing prices are not yet available.
-pub async fn auto_snapshot_check(
-    db: &Database,
-    cache: &ExchangeRateCache,
-    quote_cache: &QuoteCache,
-) -> Result<(), String> {
-    let today = last_closed_market_date();
-    let today_str = today.format("%Y-%m-%d").to_string();
-
-    let already_taken: bool = {
-        let conn = db.conn.lock().map_err(|e| e.to_string())?;
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM daily_portfolio_values WHERE date = ?1",
-                rusqlite::params![today_str],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
-        count > 0
-    };
-
-    if !already_taken {
-        take_daily_snapshot(db, cache, quote_cache, today).await?;
     }
 
     Ok(())
