@@ -196,6 +196,7 @@ pub fn run() {
             commands::quarterly::delete_quarterly_snapshot,
             commands::quarterly::refresh_quarterly_snapshot,
             commands::quarterly::check_missing_snapshots,
+            commands::quarterly::ensure_current_quarter_snapshot,
             commands::quarterly::compare_quarters,
             commands::quarterly::update_holding_notes,
             commands::quarterly::get_holding_notes_history,

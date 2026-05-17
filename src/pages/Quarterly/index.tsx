@@ -43,13 +43,20 @@ export default function QuarterlyPage() {
     fetchMissingQuarters,
     createSnapshot,
     deleteSnapshot,
+    ensureCurrentQuarterSnapshot,
   } = useQuarterlyStore();
 
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    fetchSnapshots();
-    fetchMissingQuarters();
+    const init = async () => {
+      const created = await ensureCurrentQuarterSnapshot();
+      if (created) {
+        message.success(`已自动创建当前季度快照 ${created.quarter}`);
+      }
+      await Promise.all([fetchSnapshots(), fetchMissingQuarters()]);
+    };
+    init();
   }, []);
 
   const handleCreateCurrent = async () => {

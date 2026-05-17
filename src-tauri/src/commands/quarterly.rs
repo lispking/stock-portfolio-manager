@@ -109,6 +109,15 @@ pub async fn get_quarterly_trends(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+pub async fn ensure_current_quarter_snapshot(
+    db: State<'_, Database>,
+    cache: State<'_, ExchangeRateCache>,
+    quote_cache: State<'_, QuoteCache>,
+) -> Result<Option<QuarterlySnapshot>, String> {
+    quarterly_service::ensure_current_quarter_snapshot(&db, &cache, &quote_cache).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
 pub fn get_quarterly_transactions(
     db: State<'_, Database>,
     snapshot_id: String,

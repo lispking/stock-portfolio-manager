@@ -1563,6 +1563,37 @@ pub fn get_quarterly_transactions(
     Ok(groups)
 }
 
+/// Check if the current quarter already has a snapshot. If not, create one and return it.
+/// Returns `None` when a snapshot for the current quarter already exists.
+pub async fn ensure_current_quarter_snapshot(
+    db: &Database,
+    cache: &ExchangeRateCache,
+    quote_cache: &QuoteCache,
+) -> Result<Option<QuarterlySnapshot>, String> {
+    let today = Utc::now().date_naive();
+    let current_quarter = date_to_quarter(today);
+
+    // Check whether a snapshot already exists for the current quarter
+    let exists: bool = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT COUNT(*) FROM quarterly_snapshots WHERE quarter = ?1",
+            rusqlite::params![current_quarter],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false)
+    };
+
+    if exists {
+        return Ok(None);
+    }
+
+    // No snapshot yet for this quarter — create one automatically
+    let snapshot = create_quarterly_snapshot(db, cache, quote_cache, Some(current_quarter)).await?;
+    Ok(Some(snapshot))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -26,6 +26,7 @@ interface QuarterlyState {
   createSnapshot: (quarter?: string) => Promise<QuarterlySnapshot | null>;
   deleteSnapshot: (snapshotId: string) => Promise<void>;
   fetchMissingQuarters: () => Promise<void>;
+  ensureCurrentQuarterSnapshot: () => Promise<QuarterlySnapshot | null>;
   compareQuarters: (quarter1: string, quarter2: string) => Promise<void>;
   fetchTrends: () => Promise<void>;
   fetchNotesSummaries: () => Promise<void>;
@@ -116,6 +117,20 @@ export const useQuarterlyStore = create<QuarterlyState>((set, get) => ({
       set({ missingQuarters });
     } catch (err) {
       console.error("fetchMissingQuarters error:", err);
+    }
+  },
+
+  ensureCurrentQuarterSnapshot: async () => {
+    try {
+      const snapshot = await invoke<QuarterlySnapshot | null>("ensure_current_quarter_snapshot");
+      if (snapshot) {
+        await get().fetchSnapshots();
+        await get().fetchMissingQuarters();
+      }
+      return snapshot;
+    } catch (err) {
+      console.error("ensureCurrentQuarterSnapshot error:", err);
+      return null;
     }
   },
 
