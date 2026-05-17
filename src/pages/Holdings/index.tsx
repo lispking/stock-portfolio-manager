@@ -423,7 +423,7 @@ export default function HoldingsPage() {
       title: "所属账户",
       dataIndex: "account_id",
       key: "account_id",
-      width: 100,
+      width: 105,
       render: (id: string) => accountMap[id] || id,
     }] : []),
     {
@@ -451,6 +451,7 @@ export default function HoldingsPage() {
       dataIndex: "shares",
       key: "shares",
       width: 100,
+      ellipsis: true,
       render: (v: number, record: HoldingWithQuote) =>
         isCashSymbol(record.symbol)
           ? `${currencySymbol[record.currency]}${v.toLocaleString(undefined, CURRENCY_FORMAT_OPTIONS)}`
@@ -460,7 +461,8 @@ export default function HoldingsPage() {
       title: "平均成本",
       dataIndex: "avg_cost",
       key: "avg_cost",
-      width: 100,
+      width: 120,
+      ellipsis: true,
       render: (v: number, record: HoldingWithQuote) =>
         isCashSymbol(record.symbol) ? "—" : `${currencySymbol[record.currency]}${v.toFixed(3)}`,
     },
@@ -470,7 +472,7 @@ export default function HoldingsPage() {
     {
       title: "实时价格",
       key: "current_price",
-      width: 100,
+      width: 110,
       render: (_: unknown, record: HoldingWithQuote) => {
         if (!record.quote) return quotesLoading ? <Spin size="small" /> : <span>—</span>;
         return (
@@ -483,6 +485,7 @@ export default function HoldingsPage() {
     {
       title: "涨跌幅",
       key: "change_percent",
+      width: 140,
       render: (_: unknown, record: HoldingWithQuote) => {
         if (!record.quote) return <span>—</span>;
         const { change, change_percent } = record.quote;
@@ -499,6 +502,7 @@ export default function HoldingsPage() {
     {
       title: "当前市值",
       key: "market_value",
+      width: 145,
       sorter: (a: HoldingWithQuote, b: HoldingWithQuote) => {
         const aUsd = convertWithCachedRates(a.market_value ?? 0, a.currency, "USD");
         const bUsd = convertWithCachedRates(b.market_value ?? 0, b.currency, "USD");
@@ -514,6 +518,7 @@ export default function HoldingsPage() {
     {
       title: "盈亏",
       key: "unrealized_pnl",
+      width: 200,
       sorter: (a: HoldingWithQuote, b: HoldingWithQuote) => {
         const aUsd = convertWithCachedRates(a.unrealized_pnl ?? 0, a.currency, "USD");
         const bUsd = convertWithCachedRates(b.unrealized_pnl ?? 0, b.currency, "USD");
@@ -536,6 +541,7 @@ export default function HoldingsPage() {
   const actionColumn = {
     title: "操作",
     key: "action",
+    width: 160,
     render: (_: unknown, record: HoldingWithQuote) => (
       <Space>
         <Button type="link" size="small" onClick={() => handleShowDetail(record)}>
