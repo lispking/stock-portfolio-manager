@@ -59,8 +59,10 @@ function isClearedPosition(holding: { symbol: string; shares: number }): boolean
 /**
  * Compute the cash flow delta caused by a single transaction.
  * Cash-symbol BUY/OPEN → deposit, positive.
- * Stock BUY → cash out (negative).
- * Stock SELL → cash in (positive).
+ * Stock BUY → cash out (negative). Commission is added to the outflow because
+ *   it further reduces available cash on top of the purchase cost.
+ * Stock SELL → cash in (positive). Commission is subtracted from the inflow
+ *   because it is deducted from the proceeds, reducing available cash.
  * PAY (dividend) → cash in (positive).
  * Stock OPEN → 0 (initial position entry, no real cash movement).
  */
@@ -986,6 +988,10 @@ export default function HoldingsPage() {
                   if (isCashSymbol(record.symbol)) {
                     return <Tag color="blue">存入</Tag>;
                   }
+                  // In the cash flow view, colors reflect the cash impact:
+                  // BUY → red (cash decreases), SELL → green (cash increases).
+                  // This intentionally differs from the stock detail view where
+                  // colors reflect the stock position change (BUY=green, SELL=red).
                   if (type === "BUY") return <Tag color="red">买入</Tag>;
                   if (type === "SELL") return <Tag color="green">卖出</Tag>;
                   if (type === "PAY") return <Tag color="orange">分红</Tag>;
