@@ -45,12 +45,14 @@ pub fn create_holding(
         )
         .map_err(|e| e.to_string())?;
 
-        // Insert an initial BUY transaction to record the position entry
+        // Insert an initial OPEN transaction to record the position entry.
+        // OPEN type signals a position-opening entry with no cash movement
+        // (unlike BUY which represents a real trade that decreases cash).
         let txn_id = uuid::Uuid::new_v4().to_string();
         let total_amount = shares * avg_cost;
         conn.execute(
             "INSERT INTO transactions (id, holding_id, account_id, symbol, name, market, transaction_type, shares, price, total_amount, commission, currency, traded_at, notes, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'BUY', ?7, ?8, ?9, 0.0, ?10, ?11, NULL, ?12)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'OPEN', ?7, ?8, ?9, 0.0, ?10, ?11, NULL, ?12)",
             rusqlite::params![
                 txn_id, id, account_id, symbol, name, market,
                 shares, avg_cost, total_amount, currency, now, now

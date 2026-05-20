@@ -303,6 +303,40 @@ impl Database {
 
         migrate_transactions_check_constraint(&conn)?;
 
+        // Convert synthetic BUY records to OPEN type so they are correctly
+        // treated as zero-cash-impact position entries everywhere.
+        //
+        // These migrations are idempotent (UPDATE with 0 rows is not an error)
+        // and failures are tolerated – if they don't apply, the frontend filter
+        // below provides a fallback by explicitly excluding 'backfill:initial'.
+        //
+        // 1. Records created by the backfill_open_transactions tool:
+        //    these always carry notes = 'backfill:initial'.
+        let _ = conn.execute_batch("
+            UPDATE transactions
+            SET transaction_type = 'OPEN'
+            WHERE transaction_type = 'BUY'
+              AND notes = 'backfill:initial'
+              AND symbol NOT LIKE '$CASH-%';
+        ");
+
+        // 2. Records created by create_holding (initial position entries):
+        //    identified by notes IS NULL, commission = 0, and the transaction's
+        //    traded_at matching its parent holding's created_at exactly (because
+        //    create_holding sets both to `now` in the same operation).
+        let _ = conn.execute_batch("
+            UPDATE transactions
+            SET transaction_type = 'OPEN'
+            WHERE transaction_type = 'BUY'
+              AND notes IS NULL
+              AND commission = 0.0
+              AND symbol NOT LIKE '$CASH-%'
+              AND holding_id IS NOT NULL
+              AND traded_at = (
+                  SELECT h.created_at FROM holdings h WHERE h.id = holding_id
+              );
+        ");
+
         Ok(())
     }
 }
