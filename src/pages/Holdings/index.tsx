@@ -276,6 +276,47 @@ export default function HoldingsPage() {
     avgCost: number;
     currency: Currency;
   }) => {
+    // When editing a non-cash holding, warn if shares or avgCost changed and there are 2+ transactions
+    if (
+      editingHolding &&
+      !isCashSymbol(editingHolding.symbol) &&
+      (values.shares !== editingHolding.shares || values.avgCost !== editingHolding.avg_cost)
+    ) {
+      try {
+        const txns = await invoke<Transaction[]>("get_transactions", {
+          accountId: editingHolding.account_id,
+          symbol: editingHolding.symbol,
+        });
+        if (txns.length >= 2) {
+          Modal.confirm({
+            title: "修改提醒",
+            content:
+              "该持仓已有多条交易记录，直接修改持仓股数或平均成本价会导致与交易记录计算结果不一致。建议通过「交易记录」添加或导入该持仓的交易来更新持仓信息。确定要继续保存吗？",
+            okText: "继续保存",
+            okButtonProps: { danger: true },
+            cancelText: "取消",
+            autoFocusButton: "cancel",
+            onOk: () => doSubmit(values),
+          });
+          return;
+        }
+      } catch {
+        // If fetching transactions fails, proceed with saving
+      }
+    }
+    doSubmit(values);
+  };
+
+  const doSubmit = async (values: {
+    accountId: string;
+    symbol: string;
+    name: string;
+    market: Market;
+    categoryId?: string;
+    shares: number;
+    avgCost: number;
+    currency: Currency;
+  }) => {
     try {
       if (editingHolding) {
         await updateHolding({ id: editingHolding.id, ...values });
@@ -342,33 +383,8 @@ export default function HoldingsPage() {
     setModalOpen(true);
   };
 
-  const handleEdit = async (holding: Holding) => {
-    // Skip warning for cash holdings
-    if (isCashSymbol(holding.symbol)) {
-      openEditModal(holding);
-      return;
-    }
-    try {
-      const txns = await invoke<Transaction[]>("get_transactions", {
-        accountId: holding.account_id,
-        symbol: holding.symbol,
-      });
-      if (txns.length >= 2) {
-        Modal.confirm({
-          title: "编辑提醒",
-          content:
-            "该持仓已有多条交易记录。直接修改持仓股数或平均成本价，可能导致与交易记录计算出的数据不一致。建议前往「交易记录」中添加或导入该持仓的交易记录来更新持仓信息。确定要继续编辑吗？",
-          okText: "继续编辑",
-          cancelText: "取消",
-          onOk: () => openEditModal(holding),
-        });
-      } else {
-        openEditModal(holding);
-      }
-    } catch {
-      // If fetching transactions fails, proceed with editing
-      openEditModal(holding);
-    }
+  const handleEdit = (holding: Holding) => {
+    openEditModal(holding);
   };
 
   const handleDelete = async (id: string) => {
