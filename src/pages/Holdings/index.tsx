@@ -291,10 +291,11 @@ export default function HoldingsPage() {
           Modal.confirm({
             title: "修改提醒",
             content:
-              "该持仓已有多条交易记录，直接修改持仓股数或平均成本价会导致与交易记录计算结果不一致。建议通过「交易记录」添加或导入该持仓的交易来更新持仓信息。确定要继续保存吗？",
+              "该持仓已有多条交易记录，直接修改持仓股数或平均成本价会导致与交易记录计算结果不一致。建议通过「交易记录」添加或导入该持仓的交易来更新持仓信息，取消本次修改操作。确定要继续保存吗？",
             okText: "继续保存",
-            okButtonProps: { danger: true },
+            okButtonProps: { style: { backgroundColor: "white", color: "#333", borderColor: "#d9d9d9" } },
             cancelText: "取消",
+            cancelButtonProps: { type: "primary" },
             autoFocusButton: "cancel",
             onOk: () => doSubmit(values),
           });
