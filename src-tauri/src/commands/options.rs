@@ -457,6 +457,41 @@ fn parse_quantity(s: &str) -> i64 {
         .unwrap_or(0)
 }
 
+/// Convert expiry date like "16JAN26" to sortable "2026-01-16" format.
+fn parse_expiry_to_sortable(expiry: &str) -> String {
+    let expiry = expiry.trim();
+    if expiry.len() < 7 {
+        return expiry.to_string();
+    }
+    let day = &expiry[0..2];
+    let mon_str = &expiry[2..5];
+    let year_short = &expiry[5..];
+
+    let month = match mon_str.to_uppercase().as_str() {
+        "JAN" => "01",
+        "FEB" => "02",
+        "MAR" => "03",
+        "APR" => "04",
+        "MAY" => "05",
+        "JUN" => "06",
+        "JUL" => "07",
+        "AUG" => "08",
+        "SEP" => "09",
+        "OCT" => "10",
+        "NOV" => "11",
+        "DEC" => "12",
+        _ => return expiry.to_string(),
+    };
+
+    let year = if let Ok(y) = year_short.parse::<u32>() {
+        2000 + y
+    } else {
+        return expiry.to_string();
+    };
+
+    format!("{}-{}-{}", year, month, day)
+}
+
 /// Helper to get field by trying multiple header names
 fn get_field(
     record: &csv::StringRecord,
@@ -588,10 +623,9 @@ fn get_option_contracts_inner(
     }
 
     contracts.sort_by(|a, b| {
-        a.status
-            .cmp(&b.status)
-            .then(a.underlying.cmp(&b.underlying))
-            .then(a.expiry_date.cmp(&b.expiry_date))
+        a.underlying.cmp(&b.underlying).then_with(|| {
+            parse_expiry_to_sortable(&a.expiry_date).cmp(&parse_expiry_to_sortable(&b.expiry_date))
+        })
     });
 
     Ok(contracts)
