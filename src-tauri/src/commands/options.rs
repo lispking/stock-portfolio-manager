@@ -497,10 +497,10 @@ fn get_option_contracts_inner(
     }
 
     for (symbol, recs) in &grouped {
-        // Collect all open records (SELL + O) sorted by traded_at
+        // Collect all open records (SELL + O or O;P) sorted by traded_at
         let mut opens: Vec<&OptionRecord> = recs
             .iter()
-            .filter(|r| r.action == "SELL" && r.code == "O")
+            .filter(|r| r.action == "SELL" && r.code.starts_with("O"))
             .collect();
         opens.sort_by(|a, b| a.traded_at.cmp(&b.traded_at));
 
