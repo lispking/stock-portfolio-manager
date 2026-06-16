@@ -173,6 +173,13 @@ pub fn import_options_csv(
         imported += 1;
     }
 
+    if !errors.is_empty() {
+        eprintln!("[期权导入] 错误 {} 条:", errors.len());
+        for e in &errors {
+            eprintln!("  - {}", e);
+        }
+    }
+
     Ok(ImportOptionsResult {
         imported,
         skipped,
