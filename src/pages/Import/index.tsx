@@ -324,7 +324,7 @@ export default function ImportPage() {
                       { title: "Symbol", dataIndex: "symbol", key: "symbol", width: 120 },
                       { title: "原因", dataIndex: "reason", key: "reason" },
                     ]}
-                    rowKey={(_, i) => String(i)}
+                    rowKey={(record) => `${record.row}-${record.symbol}`}
                     size="small"
                     pagination={importResult.skipped_rows.length > 10 ? { pageSize: 10 } : false}
                     scroll={{ x: "max-content" }}
@@ -345,7 +345,7 @@ export default function ImportPage() {
                       { title: "列", dataIndex: "column", key: "column", width: 120 },
                       { title: "错误信息", dataIndex: "message", key: "message" },
                     ]}
-                    rowKey={(_, i) => String(i)}
+                    rowKey={(record) => `${record.row}-${record.column}`}
                     size="small"
                     pagination={importResult.errors.length > 10 ? { pageSize: 10 } : false}
                     scroll={{ x: "max-content" }}
