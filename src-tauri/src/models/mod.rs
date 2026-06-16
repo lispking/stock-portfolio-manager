@@ -5,6 +5,7 @@ pub mod category;
 pub mod dashboard;
 pub mod holding;
 pub mod import_export;
+pub mod option;
 pub mod performance;
 pub mod quarterly;
 pub mod quote;

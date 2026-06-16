@@ -1,0 +1,82 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OptionRecord {
+    pub id: String,
+    pub account_id: String,
+    pub option_symbol: String,
+    pub underlying: String,
+    pub expiry_date: String,
+    pub strike_price: f64,
+    pub option_type: String, // "P" or "C"
+    pub action: String,      // "SELL" or "BUY"
+    pub code: String,        // "O", "C;Ep", "A;C"
+    pub quantity: i64,       // number of contracts (absolute)
+    pub price: f64,
+    pub amount: f64,
+    pub commission: f64,
+    pub fee: f64,
+    pub traded_at: Option<String>,
+    pub settled_at: Option<String>,
+    pub created_at: String,
+}
+
+/// A paired option contract with status derived from matching records
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OptionContract {
+    pub option_symbol: String,
+    pub underlying: String,
+    pub expiry_date: String,
+    pub strike_price: f64,
+    pub option_type: String,    // "P" or "C"
+    pub contracts: i64,         // number of contracts
+    pub open_price: f64,        // sell to open price
+    pub open_amount: f64,       // total premium received
+    pub close_price: Option<f64>,
+    pub close_code: Option<String>, // "C;Ep" (expired) or "A;C" (assigned)
+    pub status: String,         // "active" or "expired"
+    pub account_id: String,
+}
+
+/// Statistics for expired options
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExpiredOptionStats {
+    pub total_contracts: i64,
+    pub assigned_contracts: i64,
+    pub expired_contracts: i64,
+    pub assignment_ratio: f64,
+}
+
+/// Sell Put simulation result per stock
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SellPutSimulation {
+    pub underlying: String,
+    pub contracts: Vec<PutContractSimulation>,
+    pub total_cash_needed: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PutContractSimulation {
+    pub option_symbol: String,
+    pub strike_price: f64,
+    pub contracts: i64,
+    pub would_be_assigned: bool,
+    pub cash_needed: f64,
+}
+
+/// Sell Call simulation result per stock
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SellCallSimulation {
+    pub underlying: String,
+    pub contracts: Vec<CallContractSimulation>,
+    pub total_shares_needed: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CallContractSimulation {
+    pub option_symbol: String,
+    pub strike_price: f64,
+    pub contracts: i64,
+    pub would_be_assigned: bool,
+    pub shares_needed: i64,
+}
