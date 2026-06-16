@@ -301,6 +301,28 @@ impl Database {
             );
         ")?;
 
+        conn.execute_batch("
+            CREATE TABLE IF NOT EXISTS option_records (
+                id TEXT PRIMARY KEY NOT NULL,
+                account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                option_symbol TEXT NOT NULL,
+                underlying TEXT NOT NULL,
+                expiry_date TEXT NOT NULL,
+                strike_price REAL NOT NULL,
+                option_type TEXT NOT NULL CHECK(option_type IN ('P', 'C')),
+                action TEXT NOT NULL CHECK(action IN ('SELL', 'BUY')),
+                code TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                price REAL NOT NULL,
+                amount REAL NOT NULL,
+                commission REAL NOT NULL DEFAULT 0,
+                fee REAL NOT NULL DEFAULT 0,
+                traded_at TEXT,
+                settled_at TEXT,
+                created_at TEXT NOT NULL
+            );
+        ")?;
+
         migrate_transactions_check_constraint(&conn)?;
 
         // Convert synthetic BUY records to OPEN type so they are correctly

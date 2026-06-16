@@ -1,6 +1,6 @@
 use crate::db::Database;
 use crate::models::import_export::{
-    ExportFilters, ImportData, ImportError, ImportPreview, ImportResult,
+    ExportFilters, ImportData, ImportError, ImportPreview, ImportResult, ImportSkipped,
 };
 use crate::services::quote_provider_service::market_adjusts_sell_pay_cost;
 use chrono::Utc;
@@ -326,6 +326,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
     let now = Utc::now().to_rfc3339();
     let mut imported_count = 0usize;
     let mut skipped_count = 0usize;
+    let mut skipped_rows: Vec<ImportSkipped> = Vec::new();
     let mut errors: Vec<ImportError> = Vec::new();
 
     for (i, row) in import_data.rows.iter().enumerate() {
@@ -356,6 +357,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                     column: "symbol".to_string(),
                     message: format!("第{}行 symbol 为空", row_num),
                 });
+                skipped_rows.push(ImportSkipped {
+                    row: row_num,
+                    symbol: "(空)".to_string(),
+                    reason: "symbol 为空".to_string(),
+                });
                 skipped_count += 1;
                 continue;
             }
@@ -371,6 +377,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                 .unwrap_or(false);
 
             if exists {
+                skipped_rows.push(ImportSkipped {
+                    row: row_num,
+                    symbol: symbol.clone(),
+                    reason: "该账户中已存在相同 symbol 的持仓".to_string(),
+                });
                 skipped_count += 1;
                 continue;
             }
@@ -387,6 +398,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                         row: row_num,
                         column: String::new(),
                         message: e.to_string(),
+                    });
+                    skipped_rows.push(ImportSkipped {
+                        row: row_num,
+                        symbol: symbol.clone(),
+                        reason: format!("插入数据库失败: {}", e),
                     });
                     skipped_count += 1;
                 }
@@ -419,6 +435,17 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
             };
 
             if symbol.is_empty() || traded_at.is_empty() {
+                skipped_rows.push(ImportSkipped {
+                    row: row_num,
+                    symbol: if symbol.is_empty() { "(空)".to_string() } else { symbol.clone() },
+                    reason: if symbol.is_empty() && traded_at.is_empty() {
+                        "symbol 和 traded_at 均为空".to_string()
+                    } else if symbol.is_empty() {
+                        "symbol 为空".to_string()
+                    } else {
+                        "traded_at 为空".to_string()
+                    },
+                });
                 skipped_count += 1;
                 continue;
             }
@@ -447,6 +474,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                         column: String::new(),
                         message: format!("查询持仓失败: {}", e),
                     });
+                    skipped_rows.push(ImportSkipped {
+                        row: row_num,
+                        symbol: symbol.clone(),
+                        reason: format!("查询持仓失败: {}", e),
+                    });
                     skipped_count += 1;
                     continue;
                 }
@@ -458,6 +490,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                     row: row_num,
                     column: "transaction_type".to_string(),
                     message: format!("第{}行 {} 没有持仓记录，无法导入卖出交易", row_num, symbol),
+                });
+                skipped_rows.push(ImportSkipped {
+                    row: row_num,
+                    symbol: symbol.clone(),
+                    reason: "没有持仓记录，无法导入卖出交易".to_string(),
                 });
                 skipped_count += 1;
                 continue;
@@ -477,6 +514,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                             row: row_num,
                             column: String::new(),
                             message: format!("创建持仓失败: {}", e),
+                        });
+                        skipped_rows.push(ImportSkipped {
+                            row: row_num,
+                            symbol: symbol.clone(),
+                            reason: format!("创建持仓失败: {}", e),
                         });
                         skipped_count += 1;
                         continue;
@@ -502,6 +544,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                             column: String::new(),
                             message: format!("读取持仓失败: {}", e),
                         });
+                        skipped_rows.push(ImportSkipped {
+                            row: row_num,
+                            symbol: symbol.clone(),
+                            reason: format!("读取持仓失败: {}", e),
+                        });
                         skipped_count += 1;
                         continue;
                     }
@@ -515,6 +562,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                             "第{}行 {} 卖出数量({})超过当前持仓({})",
                             row_num, symbol, shares, cur_shares
                         ),
+                    });
+                    skipped_rows.push(ImportSkipped {
+                        row: row_num,
+                        symbol: symbol.clone(),
+                        reason: format!("卖出数量({})超过当前持仓({})", shares, cur_shares),
                     });
                     skipped_count += 1;
                     continue;
@@ -564,6 +616,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                         column: String::new(),
                         message: format!("更新持仓失败: {}", e),
                     });
+                    skipped_rows.push(ImportSkipped {
+                        row: row_num,
+                        symbol: symbol.clone(),
+                        reason: format!("更新持仓失败: {}", e),
+                    });
                     skipped_count += 1;
                     continue;
                 }
@@ -582,6 +639,11 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                         column: String::new(),
                         message: e.to_string(),
                     });
+                    skipped_rows.push(ImportSkipped {
+                        row: row_num,
+                        symbol: symbol.clone(),
+                        reason: format!("插入交易记录失败: {}", e),
+                    });
                     skipped_count += 1;
                 }
             }
@@ -591,6 +653,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
     Ok(ImportResult {
         imported_count,
         skipped_count,
+        skipped_rows,
         errors,
     })
 }

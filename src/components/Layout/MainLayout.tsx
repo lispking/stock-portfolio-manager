@@ -14,6 +14,7 @@ import {
   BellOutlined,
   HistoryOutlined,
   SettingOutlined,
+  FundOutlined,
 } from "@ant-design/icons";
 
 const { Sider, Content } = Layout;
@@ -26,6 +27,7 @@ const menuItems = [
   { key: "/accounts", icon: <BankOutlined />, label: "证券账户" },
   { key: "/holdings", icon: <StockOutlined />, label: "持仓管理" },
   { key: "/transactions", icon: <SwapOutlined />, label: "交易记录" },
+  { key: "/options", icon: <FundOutlined />, label: "期权管理" },
   { key: "/categories", icon: <TagsOutlined />, label: "投资类别" },
   { key: "/import", icon: <ImportOutlined />, label: "导入导出" },
   { key: "/alerts", icon: <BellOutlined />, label: "价格提醒" },

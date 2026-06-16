@@ -33,8 +33,16 @@ pub struct ImportData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportSkipped {
+    pub row: usize,
+    pub symbol: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportResult {
     pub imported_count: usize,
     pub skipped_count: usize,
+    pub skipped_rows: Vec<ImportSkipped>,
     pub errors: Vec<ImportError>,
 }

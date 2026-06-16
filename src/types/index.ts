@@ -551,9 +551,16 @@ export interface ImportData {
   account_id: string;
 }
 
+export interface ImportSkipped {
+  row: number;
+  symbol: string;
+  reason: string;
+}
+
 export interface ImportResult {
   imported_count: number;
   skipped_count: number;
+  skipped_rows: ImportSkipped[];
   errors: ImportError[];
 }
 
@@ -638,5 +645,90 @@ export interface QuoteProviderConfig {
   us_adjust_sell_pay_cost?: boolean;
   /** HK stock: adjust avg_cost on SELL and dividend. Default false. */
   hk_adjust_sell_pay_cost?: boolean;
+}
+
+// Options Management types
+export interface OptionRecord {
+  id: string;
+  account_id: string;
+  option_symbol: string;
+  underlying: string;
+  expiry_date: string;
+  strike_price: number;
+  option_type: "P" | "C";
+  action: "SELL" | "BUY";
+  code: string;
+  quantity: number;
+  price: number;
+  amount: number;
+  commission: number;
+  fee: number;
+  traded_at: string | null;
+  settled_at: string | null;
+  created_at: string;
+}
+
+export interface OptionContract {
+  id: string;
+  option_symbol: string;
+  underlying: string;
+  expiry_date: string;
+  strike_price: number;
+  option_type: "P" | "C";
+  contracts: number;
+  open_price: number;
+  open_amount: number;
+  commission: number;
+  traded_at: string | null;
+  close_price: number | null;
+  close_code: string | null;
+  status: "active" | "expired";
+  account_id: string;
+}
+
+export interface ExpiredOptionStats {
+  total_contracts: number;
+  assigned_contracts: number;
+  expired_contracts: number;
+  assignment_ratio: number;
+}
+
+export interface SellPutSimulation {
+  underlying: string;
+  contracts: PutContractSimulation[];
+  total_cash_needed: number;
+}
+
+export interface PutContractSimulation {
+  option_symbol: string;
+  strike_price: number;
+  contracts: number;
+  would_be_assigned: boolean;
+  cash_needed: number;
+}
+
+export interface SellCallSimulation {
+  underlying: string;
+  contracts: CallContractSimulation[];
+  total_shares_needed: number;
+}
+
+export interface CallContractSimulation {
+  option_symbol: string;
+  strike_price: number;
+  contracts: number;
+  would_be_assigned: boolean;
+  shares_needed: number;
+}
+
+export interface ImportOptionsResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface StockPriceInput {
+  symbol: string;
+  price: number;
 }
 

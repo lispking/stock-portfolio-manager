@@ -20,6 +20,7 @@ import ImportPage from "./pages/Import";
 import AlertsPage from "./pages/Alerts";
 import ReviewPage from "./pages/Review";
 import SettingsPage from "./pages/Settings";
+import OptionsPage from "./pages/Options";
 
 function App() {
   // quoteWarning in the global store is the single source of truth for the
@@ -118,6 +119,7 @@ function App() {
           <Route path="/quarterly/trends" element={<TrendsPage />} />
           <Route path="/quarterly/:snapshotId" element={<SnapshotDetail />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/options" element={<OptionsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/settings" element={<SettingsPage />} />

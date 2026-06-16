@@ -231,6 +231,13 @@ pub fn run() {
             commands::ocr::parse_trade_image,
             commands::ocr::lookup_cn_stock_code,
             commands::ocr::lookup_stock_name_by_symbol,
+            // Options Management
+            commands::options::import_options_csv,
+            commands::options::get_option_contracts,
+            commands::options::get_expired_option_stats,
+            commands::options::simulate_sell_put,
+            commands::options::simulate_sell_call,
+            commands::options::delete_option_records,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
