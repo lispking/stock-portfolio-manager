@@ -313,45 +313,45 @@ export default function ImportPage() {
             />
 
             {importResult.skipped_rows.length > 0 && (
-              <Alert
-                type="warning"
-                message={`跳过记录详情（共 ${importResult.skipped_rows.length} 条）`}
-                description={
-                  <Table
-                    dataSource={importResult.skipped_rows}
-                    columns={[
-                      { title: "行号", dataIndex: "row", key: "row", width: 70 },
-                      { title: "Symbol", dataIndex: "symbol", key: "symbol", width: 120 },
-                      { title: "原因", dataIndex: "reason", key: "reason" },
-                    ]}
-                    rowKey={(record) => `${record.row}-${record.symbol}`}
-                    size="small"
-                    pagination={importResult.skipped_rows.length > 10 ? { pageSize: 10 } : false}
-                    scroll={{ x: "max-content" }}
-                  />
-                }
-              />
+              <>
+                <Alert
+                  type="warning"
+                  message={`跳过记录详情（共 ${importResult.skipped_rows.length} 条）`}
+                />
+                <Table
+                  dataSource={importResult.skipped_rows}
+                  columns={[
+                    { title: "行号", dataIndex: "row", key: "row", width: 70 },
+                    { title: "Symbol", dataIndex: "symbol", key: "symbol", width: 120 },
+                    { title: "原因", dataIndex: "reason", key: "reason" },
+                  ]}
+                  rowKey={(record) => `${record.row}-${record.symbol}`}
+                  size="small"
+                  pagination={importResult.skipped_rows.length > 10 ? { pageSize: 10 } : false}
+                  scroll={{ x: "max-content" }}
+                />
+              </>
             )}
 
             {importResult.errors.length > 0 && (
-              <Alert
-                type="error"
-                message={`错误记录详情（共 ${importResult.errors.length} 条）`}
-                description={
-                  <Table
-                    dataSource={importResult.errors}
-                    columns={[
-                      { title: "行号", dataIndex: "row", key: "row", width: 70 },
-                      { title: "列", dataIndex: "column", key: "column", width: 120 },
-                      { title: "错误信息", dataIndex: "message", key: "message" },
-                    ]}
-                    rowKey={(record) => `${record.row}-${record.column}`}
-                    size="small"
-                    pagination={importResult.errors.length > 10 ? { pageSize: 10 } : false}
-                    scroll={{ x: "max-content" }}
-                  />
-                }
-              />
+              <>
+                <Alert
+                  type="error"
+                  message={`错误记录详情（共 ${importResult.errors.length} 条）`}
+                />
+                <Table
+                  dataSource={importResult.errors}
+                  columns={[
+                    { title: "行号", dataIndex: "row", key: "row", width: 70 },
+                    { title: "列", dataIndex: "column", key: "column", width: 120 },
+                    { title: "错误信息", dataIndex: "message", key: "message" },
+                  ]}
+                  rowKey={(record) => `${record.row}-${record.column}`}
+                  size="small"
+                  pagination={importResult.errors.length > 10 ? { pageSize: 10 } : false}
+                  scroll={{ x: "max-content" }}
+                />
+              </>
             )}
 
             <Button onClick={handleReset}>
