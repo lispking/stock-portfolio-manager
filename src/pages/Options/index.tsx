@@ -56,6 +56,17 @@ export default function OptionsPage() {
     fetchAccounts();
   }, [fetchAccounts]);
 
+  // Validate stored account ID exists; clear if account was deleted
+  useEffect(() => {
+    if (selectedAccountId && accounts.length > 0) {
+      const exists = accounts.some((a) => a.id === selectedAccountId);
+      if (!exists) {
+        setSelectedAccountId("");
+        localStorage.removeItem("options_selected_account_id");
+      }
+    }
+  }, [accounts, selectedAccountId]);
+
   // Persist selected account
   useEffect(() => {
     if (selectedAccountId) {
