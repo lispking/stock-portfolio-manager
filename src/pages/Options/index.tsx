@@ -46,13 +46,22 @@ export default function OptionsPage() {
     deleteOptionRecords,
   } = useOptionStore();
 
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(() => {
+    return localStorage.getItem("options_selected_account_id") || "";
+  });
   const [stockPrices, setStockPrices] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<string>("active");
 
   useEffect(() => {
     fetchAccounts();
   }, [fetchAccounts]);
+
+  // Persist selected account
+  useEffect(() => {
+    if (selectedAccountId) {
+      localStorage.setItem("options_selected_account_id", selectedAccountId);
+    }
+  }, [selectedAccountId]);
 
   // Load data when account changes
   useEffect(() => {

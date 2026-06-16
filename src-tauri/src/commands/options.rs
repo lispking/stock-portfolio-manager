@@ -34,10 +34,13 @@ pub fn import_options_csv(
 ) -> Result<ImportOptionsResult, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
+    // Strip UTF-8 BOM if present
+    let content = csv_content.strip_prefix('\u{feff}').unwrap_or(&csv_content);
+
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .flexible(true)
-        .from_reader(csv_content.as_bytes());
+        .from_reader(content.as_bytes());
 
     let headers = reader
         .headers()
@@ -65,7 +68,11 @@ pub fn import_options_csv(
         }
 
         // Get the option symbol (column index 1: 股票)
-        let option_symbol = match get_field(&record, &headers, &["股票", "symbol", "Symbol"]) {
+        let option_symbol = match get_field(
+            &record,
+            &headers,
+            &["股票", "股票代码", "合约", "期权", "期权代码", "symbol", "Symbol"],
+        ) {
             Some(s) if !s.is_empty() => s,
             _ => {
                 skipped += 1;
@@ -84,23 +91,22 @@ pub fn import_options_csv(
             };
 
         // Parse other fields
-        let action = get_field(&record, &headers, &["操作", "action", "Action"])
-            .unwrap_or_default()
-            .to_uppercase();
-        if action != "SELL" && action != "BUY" {
-            errors.push(format!("Row {}: invalid action '{}'", i + 2, action));
+        let action_raw = get_field(&record, &headers, &["操作", "买/卖", "买卖", "action", "Action"])
+            .unwrap_or_default();
+        let action = normalize_action(&action_raw);
+        if action.is_empty() {
+            errors.push(format!("Row {}: invalid action '{}'", i + 2, action_raw));
             continue;
         }
 
         let code = get_field(&record, &headers, &["代码", "code", "Code"]).unwrap_or_default();
-        let quantity_str =
-            get_field(&record, &headers, &["股票数量", "quantity", "Quantity"]).unwrap_or_default();
-        let quantity: i64 = quantity_str
-            .replace(',', "")
-            .parse::<f64>()
-            .map(|v| v.abs() as i64)
-            .unwrap_or(0)
-            / 100; // Convert shares to contracts
+        let quantity_str = get_field(
+            &record,
+            &headers,
+            &["股票数量", "数量", "合约数量", "合约数", "quantity", "Quantity"],
+        )
+        .unwrap_or_default();
+        let quantity: i64 = parse_quantity(&quantity_str);
 
         if quantity == 0 {
             skipped += 1;
@@ -381,6 +387,42 @@ pub struct ImportOptionsResult {
     pub imported: usize,
     pub skipped: usize,
     pub errors: Vec<String>,
+}
+
+/// Normalize action value to "SELL" or "BUY", supporting Chinese and English variants
+fn normalize_action(raw: &str) -> String {
+    let s = raw.trim().to_uppercase();
+    match s.as_str() {
+        "SELL" | "卖" | "卖出" | "卖开" | "卖平" => "SELL".to_string(),
+        "BUY" | "买" | "买入" | "买开" | "买平" => "BUY".to_string(),
+        _ => {
+            // Check if the raw value contains Chinese sell/buy characters
+            let raw_trimmed = raw.trim();
+            if raw_trimmed.contains('卖') {
+                "SELL".to_string()
+            } else if raw_trimmed.contains('买') {
+                "BUY".to_string()
+            } else {
+                String::new()
+            }
+        }
+    }
+}
+
+/// Parse quantity string to number of contracts.
+/// If the absolute value is >= 100 and divisible by 100, treat as shares and divide by 100.
+/// Otherwise treat as contracts directly.
+fn parse_quantity(s: &str) -> i64 {
+    let val = s
+        .replace(',', "")
+        .parse::<f64>()
+        .map(|v| v.abs() as i64)
+        .unwrap_or(0);
+    if val >= 100 && val % 100 == 0 {
+        val / 100
+    } else {
+        val
+    }
 }
 
 /// Helper to get field by trying multiple header names
