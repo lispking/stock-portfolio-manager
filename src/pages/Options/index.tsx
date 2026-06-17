@@ -297,7 +297,7 @@ export default function OptionsPage() {
       title: "期权标识",
       dataIndex: "option_symbol",
       key: "option_symbol",
-      width: 220,
+      width: 245,
     },
     {
       title: "股票",
@@ -340,7 +340,7 @@ export default function OptionsPage() {
       title: "开仓价",
       dataIndex: "open_price",
       key: "open_price",
-      width: 90,
+      width: 80,
       render: (v: number) => `$${v.toFixed(2)}`,
     },
     {
