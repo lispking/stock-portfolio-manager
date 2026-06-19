@@ -1066,6 +1066,8 @@ fn get_option_contracts_inner(
     contracts.sort_by(|a, b| {
         a.underlying.cmp(&b.underlying).then_with(|| {
             parse_expiry_to_sortable(&a.expiry_date).cmp(&parse_expiry_to_sortable(&b.expiry_date))
+        }).then_with(|| {
+            a.strike_price.partial_cmp(&b.strike_price).unwrap_or(std::cmp::Ordering::Equal)
         })
     });
 
