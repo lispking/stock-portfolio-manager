@@ -736,6 +736,13 @@ export interface StockSplit {
   created_at: string;
 }
 
+export interface OptionShareLot {
+  id: number;
+  stock_code: string;
+  shares_per_contract: number;
+  created_at: string;
+}
+
 export interface StockPriceInput {
   symbol: string;
   price: number;

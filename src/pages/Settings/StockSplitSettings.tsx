@@ -15,20 +15,34 @@ import {
 } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useStockSplitStore } from "../../stores/stockSplitStore";
-import type { StockSplit } from "../../types";
+import { useOptionShareLotStore } from "../../stores/optionShareLotStore";
+import type { StockSplit, OptionShareLot } from "../../types";
 import type { Dayjs } from "dayjs";
 
 const { Text } = Typography;
 
 export default function StockSplitSettings() {
   const { splits, loading, fetchSplits, addSplit, deleteSplit } = useStockSplitStore();
+  const {
+    shareLots,
+    loading: shareLotLoading,
+    fetchShareLots,
+    addShareLot,
+    deleteShareLot,
+  } = useOptionShareLotStore();
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
 
+  // Share lot state
+  const [shareLotModalOpen, setShareLotModalOpen] = useState(false);
+  const [shareLotForm] = Form.useForm();
+  const [shareLotSubmitting, setShareLotSubmitting] = useState(false);
+
   useEffect(() => {
     fetchSplits();
-  }, [fetchSplits]);
+    fetchShareLots();
+  }, [fetchSplits, fetchShareLots]);
 
   const handleAdd = async () => {
     try {
@@ -177,6 +191,115 @@ export default function StockSplitSettings() {
           </Text>
         </Form>
       </Modal>
+
+      {/* Option Share Lot Section */}
+      <Card
+        title="港股期权对应股票数量"
+        extra={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              shareLotForm.resetFields();
+              setShareLotModalOpen(true);
+            }}
+          >
+            添加
+          </Button>
+        }
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
+          设置每张期权合约对应的正股数量。默认每张对应 100 股。港股期权每张合约对应的股数各有不同，例如 1211 对应 500 股，9992 对应 200 股。若期权是在拆股前发行的，需要乘以拆股比例。
+        </Text>
+        <Table
+          dataSource={shareLots}
+          columns={[
+            { title: "股票代码", dataIndex: "stock_code", key: "stock_code", width: 140 },
+            {
+              title: "每张对应股数",
+              dataIndex: "shares_per_contract",
+              key: "shares_per_contract",
+              width: 160,
+              render: (v: number) => `${v} 股`,
+            },
+            {
+              title: "操作",
+              key: "actions",
+              width: 80,
+              render: (_: unknown, record: OptionShareLot) => (
+                <Popconfirm
+                  title="确定删除？"
+                  onConfirm={() => handleDeleteShareLot(record.id)}
+                  okText="删除"
+                  cancelText="取消"
+                >
+                  <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                </Popconfirm>
+              ),
+            },
+          ]}
+          rowKey="id"
+          loading={shareLotLoading}
+          size="small"
+          pagination={false}
+          locale={{ emptyText: "暂无配置，默认每张 100 股" }}
+        />
+      </Card>
+
+      <Modal
+        title="添加期权对应股票数量"
+        open={shareLotModalOpen}
+        onOk={handleAddShareLot}
+        onCancel={() => {
+          shareLotForm.resetFields();
+          setShareLotModalOpen(false);
+        }}
+        confirmLoading={shareLotSubmitting}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form form={shareLotForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            label="股票代码"
+            name="stock_code"
+            rules={[{ required: true, message: "请输入股票代码" }]}
+          >
+            <Input placeholder="例如：1211" />
+          </Form.Item>
+          <Form.Item
+            label="每张合约对应股数"
+            name="shares_per_contract"
+            rules={[{ required: true, message: "请输入股数" }]}
+            initialValue={100}
+            extra="缺省每张期权对应 100 股正股"
+          >
+            <InputNumber min={1} max={100000} style={{ width: "100%" }} placeholder="例如：500" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
+
+  function handleDeleteShareLot(id: number) {
+    deleteShareLot(id).then(
+      () => message.success("已删除"),
+      (err) => message.error(`删除失败: ${err}`)
+    );
+  }
+
+  async function handleAddShareLot() {
+    try {
+      const values = await shareLotForm.validateFields();
+      setShareLotSubmitting(true);
+      await addShareLot(values.stock_code, values.shares_per_contract);
+      message.success("已保存");
+      shareLotForm.resetFields();
+      setShareLotModalOpen(false);
+    } catch (err) {
+      if (err && typeof err === "object" && "errorFields" in err) return;
+      message.error(`保存失败: ${err}`);
+    } finally {
+      setShareLotSubmitting(false);
+    }
+  }
 }

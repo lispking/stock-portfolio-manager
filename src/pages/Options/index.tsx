@@ -48,6 +48,7 @@ export default function OptionsPage() {
     simulateSellPut,
     simulateSellCall,
     deleteOptionRecords,
+    clearSimulations,
   } = useOptionStore();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>(() => {
@@ -90,7 +91,9 @@ export default function OptionsPage() {
       fetchContracts(selectedAccountId);
       fetchExpiredStats(selectedAccountId);
     }
-  }, [selectedAccountId, fetchContracts, fetchExpiredStats]);
+    clearSimulations();
+    setStockPrices({});
+  }, [selectedAccountId, fetchContracts, fetchExpiredStats, clearSimulations]);
 
   // Get active and expired contracts
   const activeContracts = useMemo(

@@ -244,6 +244,9 @@ pub fn run() {
             commands::stock_splits::get_stock_splits,
             commands::stock_splits::add_stock_split,
             commands::stock_splits::delete_stock_split,
+            commands::stock_splits::get_option_share_lots,
+            commands::stock_splits::add_option_share_lot,
+            commands::stock_splits::delete_option_share_lot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

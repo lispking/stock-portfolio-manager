@@ -335,6 +335,16 @@ impl Database {
             );",
         )?;
 
+        // Option share lot configuration: shares per contract per underlying
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS option_share_lots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stock_code TEXT NOT NULL UNIQUE,
+                shares_per_contract INTEGER NOT NULL DEFAULT 100,
+                created_at TEXT NOT NULL
+            );",
+        )?;
+
         migrate_transactions_check_constraint(&conn)?;
 
         // Convert synthetic BUY records to OPEN type so they are correctly

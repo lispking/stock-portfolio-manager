@@ -25,7 +25,7 @@ export default function SettingsPage() {
     },
     {
       key: "stockSplits",
-      label: "📊 拆股管理",
+      label: "📊 期权管理",
       children: <StockSplitSettings />,
     },
   ];

@@ -275,6 +275,32 @@ pub fn simulate_sell_put(
 ) -> Result<Vec<SellPutSimulation>, String> {
     let contracts = get_option_contracts_inner(&db, &account_id)?;
 
+    // Load share lot sizes (default 100 if not configured)
+    let share_lots: std::collections::HashMap<String, i64> = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT stock_code, shares_per_contract FROM option_share_lots")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (code, shares) = row.map_err(|e| e.to_string())?;
+            map.insert(code.to_uppercase(), shares);
+        }
+        map
+    };
+
+    let get_shares = |underlying: &str| -> f64 {
+        share_lots
+            .get(&underlying.to_uppercase())
+            .copied()
+            .unwrap_or(100) as f64
+    };
+
     let active_puts: Vec<&OptionContract> = contracts
         .iter()
         .filter(|c| c.status == "active" && c.option_type == "P")
@@ -299,6 +325,7 @@ pub fn simulate_sell_put(
 
     for (underlying, puts) in &grouped {
         let stock_price = price_map.get(&underlying.to_uppercase()).copied();
+        let shares_per_contract = get_shares(underlying);
 
         let mut sim_contracts: Vec<PutContractSimulation> = Vec::new();
         let mut total_cash = 0.0;
@@ -309,7 +336,7 @@ pub fn simulate_sell_put(
                 None => false,
             };
             let cash_needed = if would_be_assigned {
-                put.strike_price * put.contracts as f64 * 100.0
+                put.strike_price * put.contracts as f64 * shares_per_contract
             } else {
                 0.0
             };
@@ -344,6 +371,32 @@ pub fn simulate_sell_call(
 ) -> Result<Vec<SellCallSimulation>, String> {
     let contracts = get_option_contracts_inner(&db, &account_id)?;
 
+    // Load share lot sizes (default 100 if not configured)
+    let share_lots: std::collections::HashMap<String, i64> = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT stock_code, shares_per_contract FROM option_share_lots")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (code, shares) = row.map_err(|e| e.to_string())?;
+            map.insert(code.to_uppercase(), shares);
+        }
+        map
+    };
+
+    let get_shares = |underlying: &str| -> i64 {
+        share_lots
+            .get(&underlying.to_uppercase())
+            .copied()
+            .unwrap_or(100)
+    };
+
     let active_calls: Vec<&OptionContract> = contracts
         .iter()
         .filter(|c| c.status == "active" && c.option_type == "C")
@@ -367,6 +420,7 @@ pub fn simulate_sell_call(
 
     for (underlying, calls) in &grouped {
         let stock_price = price_map.get(&underlying.to_uppercase()).copied();
+        let shares_per_contract = get_shares(underlying);
 
         let mut sim_contracts: Vec<CallContractSimulation> = Vec::new();
         let mut total_shares: i64 = 0;
@@ -377,7 +431,7 @@ pub fn simulate_sell_call(
                 None => false,
             };
             let shares_needed = if would_be_assigned {
-                call.contracts * 100
+                call.contracts * shares_per_contract
             } else {
                 0
             };

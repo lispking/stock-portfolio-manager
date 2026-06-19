@@ -23,6 +23,7 @@ interface OptionState {
   simulateSellPut: (accountId: string, stockPrices: StockPriceInput[]) => Promise<void>;
   simulateSellCall: (accountId: string, stockPrices: StockPriceInput[]) => Promise<void>;
   deleteOptionRecords: (accountId: string) => Promise<void>;
+  clearSimulations: () => void;
 }
 
 export const useOptionStore = create<OptionState>((set) => ({
@@ -91,5 +92,9 @@ export const useOptionStore = create<OptionState>((set) => ({
   deleteOptionRecords: async (accountId: string) => {
     await invoke("delete_option_records", { accountId });
     set({ contracts: [], expiredStats: null, putSimulations: [], callSimulations: [] });
+  },
+
+  clearSimulations: () => {
+    set({ putSimulations: [], callSimulations: [] });
   },
 }));
