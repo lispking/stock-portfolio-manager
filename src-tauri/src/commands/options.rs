@@ -415,6 +415,194 @@ pub fn delete_option_records(db: State<Database>, account_id: String) -> Result<
     Ok(())
 }
 
+/// Export option records as CSV string.
+/// The output CSV uses the same format as the import CSV for round-trip compatibility.
+#[tauri::command(rename_all = "camelCase")]
+pub fn export_options_csv(
+    db: State<Database>,
+    account_id: String,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT option_symbol, traded_at, settled_at, action, quantity, price, amount, commission, fee, code
+             FROM option_records WHERE account_id = ?1
+             ORDER BY option_symbol, traded_at",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![account_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,                       // option_symbol
+                row.get::<_, Option<String>>(1)?,               // traded_at
+                row.get::<_, Option<String>>(2)?,               // settled_at
+                row.get::<_, String>(3)?,                       // action
+                row.get::<_, i64>(4)?,                          // quantity
+                row.get::<_, f64>(5)?,                          // price
+                row.get::<_, f64>(6)?,                          // amount
+                row.get::<_, f64>(7)?,                          // commission
+                row.get::<_, f64>(8)?,                          // fee
+                row.get::<_, String>(9)?,                       // code
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    // Use csv::Writer for proper quoting of fields containing commas (e.g. traded_at)
+    let mut wtr = csv::WriterBuilder::new()
+        .has_headers(false)
+        .from_writer(Vec::new());
+
+    // Write header row
+    wtr.write_record(&[
+        "股票", "交易时间", "交割时间", "操作", "股票数量", "价格", "金额", "佣金", "费用", "代码",
+    ])
+    .map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let (symbol, traded_at, settled_at, action, quantity, price, amount, commission, fee, code) =
+            row.map_err(|e| e.to_string())?;
+        wtr.write_record(&[
+            symbol,
+            traded_at.unwrap_or_default(),
+            settled_at.unwrap_or_default(),
+            action,
+            quantity.to_string(),
+            format!("{:.2}", price),
+            format!("{:.2}", amount),
+            format!("{:.2}", commission),
+            format!("{:.2}", fee),
+            code,
+        ])
+        .map_err(|e| e.to_string())?;
+    }
+
+    let csv = String::from_utf8(wtr.into_inner().map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    Ok(csv)
+}
+
+/// Parse options CSV and return a preview without importing.
+/// This is used by the Import/Export page wizard.
+#[tauri::command(rename_all = "camelCase")]
+pub fn parse_options_csv(
+    csv_content: String,
+) -> Result<crate::models::import_export::ImportPreview, String> {
+    use crate::models::import_export::{ImportError, ImportPreview};
+    use std::collections::HashMap;
+
+    let content = csv_content
+        .strip_prefix('\u{feff}')
+        .unwrap_or(&csv_content);
+
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(content.as_bytes());
+
+    let headers = reader
+        .headers()
+        .map_err(|e| format!("Failed to read CSV headers: {}", e))?
+        .clone();
+
+    let mut total_rows: usize = 0;
+    let mut valid_rows: usize = 0;
+    let mut error_rows: Vec<ImportError> = Vec::new();
+    let mut preview_data: Vec<serde_json::Value> = Vec::new();
+
+    // Build column mapping from detected headers
+    let mut column_mapping: HashMap<String, String> = HashMap::new();
+    for h in headers.iter() {
+        let trimmed = h.trim().to_string();
+        column_mapping.insert(trimmed.clone(), trimmed);
+    }
+
+    for (i, result) in reader.records().enumerate() {
+        total_rows += 1;
+        let record = match result {
+            Ok(r) => r,
+            Err(e) => {
+                error_rows.push(ImportError {
+                    row: i + 2,
+                    column: "".to_string(),
+                    message: format!("Parse error: {}", e),
+                });
+                continue;
+            }
+        };
+
+        // Skip "Total" summary rows and empty rows
+        let first_field = record.get(0).unwrap_or("").trim();
+        if first_field.starts_with("Total")
+            || first_field.starts_with("总数")
+            || first_field.is_empty()
+        {
+            continue;
+        }
+
+        // Validate option symbol
+        let option_symbol = match get_field(
+            &record,
+            &headers,
+            &["股票", "股票代码", "合约", "期权", "期权代码", "symbol", "Symbol"],
+        ) {
+            Some(s) if !s.is_empty() => s,
+            _ => {
+                error_rows.push(ImportError {
+                    row: i + 2,
+                    column: "股票".to_string(),
+                    message: "Missing option symbol".to_string(),
+                });
+                continue;
+            }
+        };
+
+        // Parse option symbol to validate
+        if parse_option_symbol(&option_symbol).is_err() {
+            error_rows.push(ImportError {
+                row: i + 2,
+                column: "股票".to_string(),
+                message: format!("Invalid option symbol: {}", option_symbol),
+            });
+            continue;
+        }
+
+        // Validate action
+        let action_raw = get_field(
+            &record,
+            &headers,
+            &["操作", "买/卖", "买卖", "action", "Action"],
+        )
+        .unwrap_or_default();
+        let action = normalize_action(&action_raw);
+        if action.is_empty() {
+            error_rows.push(ImportError {
+                row: i + 2,
+                column: "操作".to_string(),
+                message: format!("Invalid action: {}", action_raw),
+            });
+            continue;
+        }
+
+        // Build preview row
+        let mut row_map = serde_json::Map::new();
+        for (col_idx, header) in headers.iter().enumerate() {
+            let val = record.get(col_idx).unwrap_or("").trim().to_string();
+            row_map.insert(header.trim().to_string(), serde_json::Value::String(val));
+        }
+        preview_data.push(serde_json::Value::Object(row_map));
+        valid_rows += 1;
+    }
+
+    Ok(ImportPreview {
+        total_rows,
+        valid_rows,
+        error_rows,
+        preview_data,
+        column_mapping,
+    })
+}
+
 // --- Helper types and functions ---
 
 #[derive(Debug, serde::Deserialize)]

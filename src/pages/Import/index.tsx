@@ -20,23 +20,26 @@ import {
   CheckCircleOutlined,
 } from "@ant-design/icons";
 import { invoke } from "@tauri-apps/api/core";
-import type { ImportPreview, ImportResult, ExportFilters } from "../../types";
+import type { ImportPreview, ImportResult, ExportFilters, ImportOptionsResult } from "../../types";
 import { useAccountStore } from "../../stores/accountStore";
 
 const { Title, Text } = Typography;
 
 export default function ImportPage() {
   const { accounts, fetchAccounts } = useAccountStore();
+  type DataType = "holdings" | "transactions" | "options";
   const [currentStep, setCurrentStep] = useState(0);
-  const [dataType, setDataType] = useState<"holdings" | "transactions">("holdings");
+  const [dataType, setDataType] = useState<DataType>("holdings");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [optionsImportResult, setOptionsImportResult] = useState<ImportOptionsResult | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rawCsvContent, setRawCsvContent] = useState("");
 
   // Export state
   const [exportFilters, setExportFilters] = useState<ExportFilters>({});
-  const [exportType, setExportType] = useState<"holdings" | "transactions">("holdings");
+  const [exportType, setExportType] = useState<DataType>("holdings");
 
   useEffect(() => {
     fetchAccounts();
@@ -44,8 +47,13 @@ export default function ImportPage() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const content = await invoke<string>("get_import_template", { dataType });
-      const blob = new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8;" });
+      let content: string;
+      if (dataType === "options") {
+        content = "股票,交易时间,交割时间,操作,股票数量,价格,金额,佣金,费用,代码\nAAPL 16JAN26 200 C,2025-01-15 10:30:00,2025/1/16,SELL,-10,5.50,5500.00,10.00,0.00,O\n";
+      } else {
+        content = await invoke<string>("get_import_template", { dataType });
+      }
+      const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -61,13 +69,21 @@ export default function ImportPage() {
     const reader = new FileReader();
     reader.onload = async (e) => {
       const content = e.target?.result as string;
+      setRawCsvContent(content);
       setLoading(true);
       try {
-        const result = await invoke<ImportPreview>("parse_import_csv", {
-          content,
-          dataType,
-        });
-        setPreview(result);
+        if (dataType === "options") {
+          const result = await invoke<ImportPreview>("parse_options_csv", {
+            csvContent: content,
+          });
+          setPreview(result);
+        } else {
+          const result = await invoke<ImportPreview>("parse_import_csv", {
+            content,
+            dataType,
+          });
+          setPreview(result);
+        }
         setCurrentStep(1);
       } catch (err) {
         message.error("解析文件失败: " + String(err));
@@ -87,17 +103,27 @@ export default function ImportPage() {
     if (!preview) return;
     setLoading(true);
     try {
-      const result = await invoke<ImportResult>("confirm_import", {
-        importData: {
-          data_type: dataType,
-          rows: preview.preview_data,
-          column_mapping: preview.column_mapping,
-          account_id: selectedAccountId,
-        },
-      });
-      setImportResult(result);
-      setCurrentStep(2);
-      message.success(`成功导入 ${result.imported_count} 条记录`);
+      if (dataType === "options") {
+        const result = await invoke<ImportOptionsResult>("import_options_csv", {
+          accountId: selectedAccountId,
+          csvContent: rawCsvContent,
+        });
+        setOptionsImportResult(result);
+        setCurrentStep(2);
+        message.success(`成功导入 ${result.imported} 条记录`);
+      } else {
+        const result = await invoke<ImportResult>("confirm_import", {
+          importData: {
+            data_type: dataType,
+            rows: preview.preview_data,
+            column_mapping: preview.column_mapping,
+            account_id: selectedAccountId,
+          },
+        });
+        setImportResult(result);
+        setCurrentStep(2);
+        message.success(`成功导入 ${result.imported_count} 条记录`);
+      }
     } catch (err) {
       message.error("导入失败: " + String(err));
     } finally {
@@ -109,7 +135,16 @@ export default function ImportPage() {
     setLoading(true);
     try {
       let content = "";
-      if (exportType === "holdings") {
+      if (exportType === "options") {
+        if (!exportFilters.account_id) {
+          message.warning("导出期权数据需要选择账户");
+          setLoading(false);
+          return;
+        }
+        content = await invoke<string>("export_options_csv", {
+          accountId: exportFilters.account_id,
+        });
+      } else if (exportType === "holdings") {
         content = await invoke<string>("export_holdings_csv", { filters: exportFilters });
       } else {
         content = await invoke<string>("export_transactions_csv", {
@@ -118,7 +153,7 @@ export default function ImportPage() {
           filters: exportFilters,
         });
       }
-      const blob = new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -138,6 +173,8 @@ export default function ImportPage() {
     setCurrentStep(0);
     setPreview(null);
     setImportResult(null);
+    setOptionsImportResult(null);
+    setRawCsvContent("");
   };
 
   const previewColumns =
@@ -149,6 +186,8 @@ export default function ImportPage() {
           ellipsis: true,
         }))
       : [];
+
+  const showExportAccountFilter = exportType !== "options";
 
   return (
     <div className="space-y-6">
@@ -164,24 +203,28 @@ export default function ImportPage() {
             options={[
               { value: "holdings", label: "持仓数据" },
               { value: "transactions", label: "交易记录" },
+              { value: "options", label: "期权记录" },
             ]}
           />
-          <Select
-            placeholder="按市场筛选"
-            allowClear
-            style={{ width: 140 }}
-            onChange={(v) => setExportFilters((f) => ({ ...f, market: v }))}
-            options={[
-              { value: "US", label: "美股 (US)" },
-              { value: "CN", label: "A股 (CN)" },
-              { value: "HK", label: "港股 (HK)" },
-            ]}
-          />
+          {showExportAccountFilter && (
+            <Select
+              placeholder="按市场筛选"
+              allowClear
+              style={{ width: 140 }}
+              onChange={(v) => setExportFilters((f) => ({ ...f, market: v }))}
+              options={[
+                { value: "US", label: "美股 (US)" },
+                { value: "CN", label: "A股 (CN)" },
+                { value: "HK", label: "港股 (HK)" },
+              ]}
+            />
+          )}
           <Select
             placeholder="按账户筛选"
             allowClear
             style={{ width: 160 }}
             onChange={(v) => setExportFilters((f) => ({ ...f, account_id: v }))}
+            value={exportFilters.account_id || undefined}
             options={accounts.map((a) => ({ value: a.id, label: a.name }))}
           />
           <Button
@@ -193,6 +236,11 @@ export default function ImportPage() {
             导出 CSV
           </Button>
         </Space>
+        {exportType === "options" && (
+          <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+            期权记录导出须选择账户。导出格式与导入格式一致，可重新导入。
+          </Text>
+        )}
       </Card>
 
       <Divider />
@@ -216,6 +264,7 @@ export default function ImportPage() {
                 options={[
                   { value: "holdings", label: "持仓数据" },
                   { value: "transactions", label: "交易记录" },
+                  { value: "options", label: "期权记录" },
                 ]}
               />
               <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
@@ -295,22 +344,40 @@ export default function ImportPage() {
           </Space>
         )}
 
-        {currentStep === 2 && importResult && (
+        {currentStep === 2 && (
           <Space direction="vertical" style={{ width: "100%" }}>
-            <Alert
-              type="success"
-              message="导入完成"
-              description={
-                <ul>
-                  <li>成功导入：{importResult.imported_count} 条</li>
-                  <li>跳过：{importResult.skipped_count} 条</li>
-                  {importResult.errors.length > 0 && (
-                    <li>错误：{importResult.errors.length} 条</li>
-                  )}
-                </ul>
-              }
-              icon={<CheckCircleOutlined />}
-            />
+            {importResult && (
+              <Alert
+                type="success"
+                message="导入完成"
+                description={
+                  <ul>
+                    <li>成功导入：{importResult.imported_count} 条</li>
+                    <li>跳过：{importResult.skipped_count} 条</li>
+                    {importResult.errors.length > 0 && (
+                      <li>错误：{importResult.errors.length} 条</li>
+                    )}
+                  </ul>
+                }
+                icon={<CheckCircleOutlined />}
+              />
+            )}
+            {optionsImportResult && (
+              <Alert
+                type="success"
+                message="导入完成"
+                description={
+                  <ul>
+                    <li>成功导入：{optionsImportResult.imported} 条</li>
+                    <li>跳过：{optionsImportResult.skipped} 条</li>
+                    {optionsImportResult.errors.length > 0 && (
+                      <li>错误：{optionsImportResult.errors.length} 条</li>
+                    )}
+                  </ul>
+                }
+                icon={<CheckCircleOutlined />}
+              />
+            )}
 
             <Button onClick={handleReset}>
               继续导入
