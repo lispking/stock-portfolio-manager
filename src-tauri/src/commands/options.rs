@@ -336,7 +336,7 @@ pub fn simulate_sell_put(
                 None => false,
             };
             let cash_needed = if would_be_assigned {
-                put.strike_price * put.contracts as f64 * shares_per_contract
+                put.strike_price * put.contracts.abs() as f64 * shares_per_contract
             } else {
                 0.0
             };
@@ -431,7 +431,7 @@ pub fn simulate_sell_call(
                 None => false,
             };
             let shares_needed = if would_be_assigned {
-                call.contracts * shares_per_contract
+                call.contracts.abs() * shares_per_contract
             } else {
                 0
             };

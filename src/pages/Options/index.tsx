@@ -702,24 +702,6 @@ export default function OptionsPage() {
                   </div>
                 </div>
               ))}
-              <div
-                style={{
-                  textAlign: "right",
-                  borderTop: "1px solid #f0f0f0",
-                  paddingTop: 8,
-                  marginTop: 8,
-                }}
-              >
-                <Title level={5} style={{ margin: 0 }}>
-                  总计需要正股:{" "}
-                  <Text type="danger">
-                    {callSimulations
-                      .reduce((sum, s) => sum + s.total_shares_needed, 0)
-                      .toLocaleString()}{" "}
-                    股
-                  </Text>
-                </Title>
-              </div>
             </Card>
           )}
         </>
