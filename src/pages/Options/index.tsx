@@ -13,7 +13,8 @@ import {
   Space,
   Upload,
   message,
-  Popconfirm,
+  Modal,
+  Input,
   Typography,
   Alert,
 } from "antd";
@@ -54,6 +55,12 @@ export default function OptionsPage() {
   });
   const [stockPrices, setStockPrices] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<string>("active");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+
+  const selectedAccountName = useMemo(() => {
+    return accounts.find((a) => a.id === selectedAccountId)?.name || "";
+  }, [accounts, selectedAccountId]);
 
   useEffect(() => {
     fetchAccounts();
@@ -302,13 +309,24 @@ export default function OptionsPage() {
   // Handle delete all records
   const handleDelete = useCallback(async () => {
     if (!selectedAccountId) return;
+    if (confirmName !== selectedAccountName) {
+      message.warning("账户名称不匹配");
+      return;
+    }
     try {
       await deleteOptionRecords(selectedAccountId);
       message.success("已清除所有期权记录");
+      setDeleteModalOpen(false);
+      setConfirmName("");
     } catch (err) {
       message.error(`删除失败: ${err}`);
     }
-  }, [selectedAccountId, deleteOptionRecords]);
+  }, [selectedAccountId, deleteOptionRecords, confirmName, selectedAccountName]);
+
+  const openDeleteModal = useCallback(() => {
+    setConfirmName("");
+    setDeleteModalOpen(true);
+  }, []);
 
   // Table columns for active contracts
   const activeColumns = [
@@ -773,19 +791,57 @@ export default function OptionsPage() {
               导入CSV
             </Button>
           </Upload>
-          <Popconfirm
-            title="确定清除该账户所有期权记录？"
-            onConfirm={handleDelete}
+          <Button
+            icon={<DeleteOutlined />}
+            danger
             disabled={!selectedAccountId || contracts.length === 0}
+            onClick={openDeleteModal}
           >
-            <Button
-              icon={<DeleteOutlined />}
-              danger
-              disabled={!selectedAccountId || contracts.length === 0}
-            >
-              清除记录
-            </Button>
-          </Popconfirm>
+            清除记录
+          </Button>
+
+          <Modal
+            title="清除期权记录"
+            open={deleteModalOpen}
+            onOk={handleDelete}
+            onCancel={() => {
+              setDeleteModalOpen(false);
+              setConfirmName("");
+            }}
+            okText="确认删除"
+            cancelText="取消"
+            okButtonProps={{
+              danger: true,
+              disabled: confirmName !== selectedAccountName,
+            }}
+            cancelButtonProps={{
+              autoFocus: true,
+            }}
+          >
+            <div style={{ marginBottom: 16 }}>
+              <Text type="danger" strong>
+                此操作将永久删除该账户的所有期权记录，不可恢复！
+              </Text>
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <Text>请输入账户名称以确认删除：</Text>
+              <Text strong style={{ marginLeft: 4 }}>
+                {selectedAccountName}
+              </Text>
+            </div>
+            <Input
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              placeholder="请输入账户名称"
+              onPressEnter={(e) => {
+                if (confirmName === selectedAccountName) {
+                  handleDelete();
+                } else {
+                  e.preventDefault();
+                }
+              }}
+            />
+          </Modal>
         </Space>
       </div>
 
