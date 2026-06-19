@@ -191,24 +191,43 @@ export default function OptionsPage() {
     const d60 = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
     const d90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
+    // Robust date parser that handles IBKR CSV formats:
+    // "2022-06-28, 10:57:34", "2022/9/16", "2022-06-28", etc.
+    const parseDate = (s: string): Date | null => {
+      // Replace comma between date and time with space
+      let normalized = s.replace(",", " ");
+      // Try parsing directly
+      let d = new Date(normalized);
+      if (!isNaN(d.getTime())) return d;
+      // Try replacing dashes with slashes (Safari-friendly)
+      normalized = s.replace(",", " ").replace(/-/g, "/");
+      d = new Date(normalized);
+      if (!isNaN(d.getTime())) return d;
+      return null;
+    };
+
     let total = 0;
     let last30 = 0;
     let last60 = 0;
     let last90 = 0;
 
+    // Total premium: active contracts only
+    // 30/60/90 day premium: include active contracts only too
     for (const c of activeContracts) {
       const amount = Math.abs(c.open_amount);
       total += amount;
       if (c.traded_at) {
-        const tradedDate = new Date(c.traded_at);
-        if (tradedDate >= d90) last90 += amount;
-        if (tradedDate >= d60) last60 += amount;
-        if (tradedDate >= d30) last30 += amount;
+        const tradedDate = parseDate(c.traded_at);
+        if (tradedDate) {
+          if (tradedDate >= d90) last90 += amount;
+          if (tradedDate >= d60) last60 += amount;
+          if (tradedDate >= d30) last30 += amount;
+        }
       }
     }
 
     return { total, last30, last60, last90 };
-  }, [activeContracts]);
+  }, [activeContracts, contracts]);
 
   // Compute total premium for expired contracts
   const expiredTotalPremium = useMemo(() => {
