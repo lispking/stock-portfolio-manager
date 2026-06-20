@@ -193,7 +193,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
       sorter: (a, b) => a.pnl - b.pnl,
       render: (pnl: number) => (
         <span style={{ color: pnlColor(pnl) }}>
-          {pnl >= 0 ? "+" : ""}
+          {pnl >= 0 ? "+" : "-"}
           {currencySymbol}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       ),

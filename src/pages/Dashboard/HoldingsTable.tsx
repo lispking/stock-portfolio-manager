@@ -173,8 +173,8 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       sorter: (a, b) => a.pnl - b.pnl,
       render: (pnl: number, record: HoldingDetail) => (
         <span style={{ color: pnlColor(pnl) }}>
-          {pnl >= 0 ? "+" : ""}
-          {fmtMoney(pnl, record.currency)}
+          {pnl >= 0 ? "+" : "-"}
+          {fmtMoney(Math.abs(pnl), record.currency)}
         </span>
       ),
       align: "right",
