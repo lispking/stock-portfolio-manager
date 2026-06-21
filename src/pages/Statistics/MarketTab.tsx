@@ -150,9 +150,9 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
       key: "avg_cost",
       sorter: (a, b) => a.avg_cost - b.avg_cost,
       render: (price: number) =>
-        `${currencySymbol}${price.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`,
+        `${price.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`,
       align: "right" as const,
-      width: 110,
+      width: 90,
     },
     {
       title: "现价",

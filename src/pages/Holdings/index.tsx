@@ -580,10 +580,10 @@ export default function HoldingsPage() {
       title: "平均成本",
       dataIndex: "avg_cost",
       key: "avg_cost",
-      width: 120,
+      width: 90,
       ellipsis: true,
       render: (v: number, record: HoldingWithQuote) =>
-        isCashSymbol(record.symbol) ? "—" : `${currencySymbol[record.currency]}${v.toFixed(3)}`,
+        isCashSymbol(record.symbol) ? "—" : `${v.toFixed(3)}`,
     },
   ];
 

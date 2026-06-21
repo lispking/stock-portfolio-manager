@@ -127,12 +127,12 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
       key: "avg_cost",
       sorter: (a, b) => a.avg_cost - b.avg_cost,
       render: (price: number, record: HoldingDetail) =>
-        `${currencySymbol[record.currency] ?? ""}${price.toLocaleString("en-US", {
+        `${price.toLocaleString("en-US", {
           minimumFractionDigits: 3,
           maximumFractionDigits: 3,
         })}`,
       align: "right",
-      width: 110,
+      width: 90,
     },
     {
       title: "现价",
