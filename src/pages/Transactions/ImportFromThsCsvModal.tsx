@@ -196,6 +196,8 @@ function parseThsCsv(text: string): EditableRow[] {
     if (!/^\d{6}$/.test(code)) continue;
 
     const operation = iOp !== -1 ? get(iOp).trim() : "";
+    // Skip CDR custody service fee deductions (daily fees, not real trades)
+    if (operation === "上海存托服务费扣收") continue;
     const isDividend = operation === "红股派息" || operation === "股息入账";
 
     const shares = parseNum(get(iShares));
