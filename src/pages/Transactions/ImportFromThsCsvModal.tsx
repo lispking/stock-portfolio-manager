@@ -166,7 +166,7 @@ function parseThsCsv(text: string): EditableRow[] {
   const iTime = col("成交时间");
   const iCode = col("证券代码");
   const iName = col("证券名称");
-  const iOp = col("操作");
+  const iOp = col("操作") !== -1 ? col("操作") : col("业务名称");
   const iExchange = col("交易所名称") !== -1 ? col("交易所名称") : col("交易市场");
   const iPrice = col("成交价格") !== -1 ? col("成交价格") : col("成交均价");
   const iShares = col("成交数量");
@@ -196,7 +196,7 @@ function parseThsCsv(text: string): EditableRow[] {
     if (!/^\d{6}$/.test(code)) continue;
 
     const operation = iOp !== -1 ? get(iOp).trim() : "";
-    const isDividend = operation === "红股派息";
+    const isDividend = operation === "红股派息" || operation === "股息入账";
 
     const shares = parseNum(get(iShares));
     if (!isDividend && (isNaN(shares) || shares === 0)) continue;
