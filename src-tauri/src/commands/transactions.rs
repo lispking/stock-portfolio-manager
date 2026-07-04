@@ -647,24 +647,82 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
     let us_adjust = market_adjusts_sell_pay_cost(&conn, "US");
     let hk_adjust = market_adjusts_sell_pay_cost(&conn, "HK");
 
-    // Fetch all non-cash holdings: (id, market).
+    // Fetch all non-cash holdings and their (account_id, symbol) pairs.
     let mut stmt = conn
         .prepare(
-            "SELECT id, market FROM holdings \
+            "SELECT id, account_id, symbol, market FROM holdings \
              WHERE symbol NOT LIKE '$CASH-%' \
              ORDER BY id",
         )
         .map_err(|e| e.to_string())?;
 
-    let holdings: Vec<(String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+    struct HoldingInfo {
+        id: String,
+        account_id: String,
+        symbol: String,
+        market: String,
+    }
+
+    let all_holdings: Vec<HoldingInfo> = stmt
+        .query_map([], |row| {
+            Ok(HoldingInfo {
+                id: row.get(0)?,
+                account_id: row.get(1)?,
+                symbol: row.get(2)?,
+                market: row.get(3)?,
+            })
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<_, _>>()
         .map_err(|e: rusqlite::Error| e.to_string())?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    for (holding_id, market) in holdings {
+    // Recalculate by (account_id, symbol) group rather than per holding_id.
+    // This merges transactions spread across multiple holding rows and picks
+    // up orphan transactions with NULL holding_id.
+    let mut groups: std::collections::HashMap<(String, String), Vec<&HoldingInfo>> =
+        std::collections::HashMap::new();
+    for h in &all_holdings {
+        groups
+            .entry((h.account_id.clone(), h.symbol.clone()))
+            .or_default()
+            .push(h);
+    }
+
+    // Also collect (account_id, symbol) from transactions that have no holding
+    // (holding_id IS NULL), so we reconstruct holdings for them too.
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT account_id, symbol, market FROM transactions \
+                 WHERE holding_id IS NULL AND symbol NOT LIKE '$CASH-%'",
+            )
+            .map_err(|e| e.to_string())?;
+        let orphan_pairs: Vec<(String, String, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+
+        for (acct_id, sym, _mkt) in orphan_pairs {
+            let key = (acct_id.clone(), sym.clone());
+            if !groups.contains_key(&key) {
+                // Create a virtual entry so we synthesise a holding for these orphans
+                groups.entry(key).or_default();
+            }
+        }
+    }
+
+    // Delete duplicate holdings AFTER recalculating — we keep the first one.
+    let mut dupes_to_delete: Vec<String> = Vec::new();
+
+    for ((account_id, symbol), holding_list) in &groups {
+        let market = holding_list
+            .first()
+            .map(|h| h.market.clone())
+            .unwrap_or_else(|| "US".to_string());
+
         let adjust = match market.as_str() {
             "CN" => cn_adjust,
             "US" => us_adjust,
@@ -672,12 +730,14 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
             _ => true,
         };
 
-        // Load all transactions for this holding, oldest first.
+        // Load ALL transactions for this (account_id, symbol), including those
+        // with NULL holding_id, oldest first.
         let mut tx_stmt = conn
             .prepare(
                 "SELECT transaction_type, shares, price, total_amount, commission \
                  FROM transactions \
-                 WHERE holding_id = ?1 \
+                 WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2) \
+                   AND symbol NOT LIKE '$CASH-%' \
                  ORDER BY traded_at ASC, created_at ASC",
             )
             .map_err(|e| e.to_string())?;
@@ -691,7 +751,7 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
         }
 
         let txs: Vec<TxRow> = tx_stmt
-            .query_map(rusqlite::params![holding_id], |row| {
+            .query_map(rusqlite::params![account_id, symbol], |row| {
                 Ok(TxRow {
                     tx_type: row.get(0)?,
                     shares: row.get(1)?,
@@ -707,18 +767,15 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
         let mut shares: f64 = 0.0;
         let mut avg_cost: f64 = 0.0;
 
-        for tx in txs {
+        for tx in &txs {
             match tx.tx_type.as_str() {
                 "OPEN" => {
-                    // Initial position entry: set state directly.
                     shares = tx.shares;
-                    avg_cost = tx.price; // 0.0 price is valid for zero-cost positions
+                    avg_cost = tx.price;
                 }
                 "BUY" => {
                     let new_total = shares + tx.shares;
                     if new_total > 0.0 {
-                        // Include commission in cost basis, consistent with
-                        // create_transaction / update_transaction.
                         avg_cost = (shares * avg_cost
                             + tx.shares * tx.price
                             + tx.commission)
@@ -729,10 +786,9 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 "SELL" => {
                     let remaining = shares - tx.shares;
                     if adjust {
-                        // Net proceeds = total_amount - commission; remaining cost
-                        // is reduced by net proceeds (commission is a trading cost).
                         avg_cost = if remaining > 0.0 {
-                            (shares * avg_cost - tx.total_amount + tx.commission) / remaining
+                            (shares * avg_cost - tx.total_amount + tx.commission)
+                                / remaining
                         } else {
                             0.0
                         };
@@ -741,19 +797,88 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 }
                 "PAY" => {
                     if adjust && shares > 0.0 {
-                        avg_cost = (shares * avg_cost - tx.total_amount) / shares;
+                        avg_cost =
+                            (shares * avg_cost - tx.total_amount) / shares;
                     }
-                    // shares unchanged for PAY
                 }
                 _ => {}
             }
         }
 
-        conn.execute(
-            "UPDATE holdings SET shares = ?2, avg_cost = ?3, updated_at = ?4 WHERE id = ?1",
-            rusqlite::params![holding_id, shares, avg_cost, now],
-        )
-        .map_err(|e| e.to_string())?;
+        // Update/create the primary holding.  Use the first existing holding
+        // row if available, otherwise create a new one.
+        if let Some(primary) = holding_list.first() {
+            conn.execute(
+                "UPDATE holdings SET shares = ?2, avg_cost = ?3, updated_at = ?4 WHERE id = ?1",
+                rusqlite::params![primary.id, shares, avg_cost, now],
+            )
+            .map_err(|e| e.to_string())?;
+
+            // Re-link orphan transactions (NULL holding_id) and transactions
+            // pointing to duplicate holdings back to the primary holding.
+            if holding_list.len() > 1 {
+                for dup in &holding_list[1..] {
+                    conn.execute(
+                        "UPDATE transactions SET holding_id = ?1 WHERE holding_id = ?2",
+                        rusqlite::params![primary.id, dup.id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    dupes_to_delete.push(dup.id.clone());
+                }
+            }
+
+            // Also fix any NULL-holding_id transactions for this symbol.
+            conn.execute(
+                "UPDATE transactions SET holding_id = ?1 \
+                 WHERE account_id = ?2 AND UPPER(symbol) = UPPER(?3) \
+                   AND holding_id IS NULL",
+                rusqlite::params![primary.id, account_id, symbol],
+            )
+            .map_err(|e| e.to_string())?;
+        } else if !txs.is_empty() {
+            // No holding exists yet but we have transactions — create one.
+            let new_id = uuid::Uuid::new_v4().to_string();
+            let currency = match market.as_str() {
+                "CN" => "CNY",
+                "HK" => "HKD",
+                _ => "USD",
+            };
+            // Look up name from any transaction
+            let name: String = conn
+                .query_row(
+                    "SELECT name FROM transactions \
+                     WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2) \
+                     ORDER BY traded_at DESC LIMIT 1",
+                    rusqlite::params![account_id, symbol],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| symbol.clone());
+
+            conn.execute(
+                "INSERT INTO holdings (id, account_id, symbol, name, market, category_id, \
+                 shares, avg_cost, currency, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![new_id, account_id, symbol, name, market, shares, avg_cost, currency, now, now],
+            )
+            .map_err(|e| e.to_string())?;
+
+            // Link orphan transactions to the new holding.
+            conn.execute(
+                "UPDATE transactions SET holding_id = ?1 \
+                 WHERE account_id = ?2 AND UPPER(symbol) = UPPER(?3) \
+                   AND holding_id IS NULL",
+                rusqlite::params![new_id, account_id, symbol],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Clean up duplicate holdings
+    for dup_id in &dupes_to_delete {
+        let _ = conn.execute(
+            "DELETE FROM holdings WHERE id = ?1",
+            rusqlite::params![dup_id],
+        );
     }
 
     Ok(())
