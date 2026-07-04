@@ -4,7 +4,11 @@ use crate::services::quote_provider_service::market_adjusts_sell_pay_cost;
 use crate::services::quote_service::{cash_display_name, CASH_SYMBOL_PREFIX};
 use tauri::State;
 
-fn validate_transaction_shares(market: &str, shares: f64) -> Result<(), String> {
+fn validate_transaction_shares(market: &str, shares: f64, transaction_type: &str) -> Result<(), String> {
+    // PAY (dividend) transactions don't require a positive share count
+    if transaction_type == "PAY" {
+        return Ok(());
+    }
     if !shares.is_finite() || shares <= 0.0 {
         return Err("Transaction shares must be a positive number".to_string());
     }
@@ -93,7 +97,7 @@ pub fn create_transaction(
     traded_at: String,
     notes: Option<String>,
 ) -> Result<Transaction, String> {
-    validate_transaction_shares(&market, shares)?;
+    validate_transaction_shares(&market, shares, &transaction_type)?;
 
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
@@ -337,7 +341,7 @@ pub fn update_transaction(
     traded_at: String,
     notes: Option<String>,
 ) -> Result<Transaction, String> {
-    validate_transaction_shares(&market, shares)?;
+    validate_transaction_shares(&market, shares, &transaction_type)?;
 
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
