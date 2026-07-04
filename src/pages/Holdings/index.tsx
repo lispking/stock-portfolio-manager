@@ -527,7 +527,7 @@ export default function HoldingsPage() {
       title: "股票代码",
       dataIndex: "symbol",
       key: "symbol",
-      width: 140,
+      width: 155,
       ellipsis: true,
       sorter: (a: HoldingWithQuote, b: HoldingWithQuote) => a.symbol.localeCompare(b.symbol),
       render: (symbol: string, record: HoldingWithQuote) => (
