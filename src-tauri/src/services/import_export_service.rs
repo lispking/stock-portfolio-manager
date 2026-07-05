@@ -583,10 +583,10 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
                     };
                     (total, avg)
                 } else if tx_type == "PAY" {
-                    // Dividend: shares unchanged.
-                    // Adjust avg_cost only when the market setting is enabled.
+                    // Dividend: shares unchanged.  Net = total_amount - commission.
+                    let net_amount = total_amount - commission;
                     let new_avg = if adjust && cur_shares > 0.0 {
-                        (cur_shares * cur_avg_cost - total_amount) / cur_shares
+                        (cur_shares * cur_avg_cost - net_amount) / cur_shares
                     } else {
                         cur_avg_cost
                     };

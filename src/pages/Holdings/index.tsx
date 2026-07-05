@@ -63,7 +63,7 @@ function isClearedPosition(holding: { symbol: string; shares: number }): boolean
  *   it further reduces available cash on top of the purchase cost.
  * Stock SELL → cash in (positive). Commission is subtracted from the inflow
  *   because it is deducted from the proceeds, reducing available cash.
- * PAY (dividend) → cash in (positive).
+ * PAY (dividend) → cash in (positive), net of commission.
  * Stock OPEN → 0 (initial position entry, no real cash movement).
  */
 function computeCashDelta(txn: Transaction): number {
@@ -74,7 +74,7 @@ function computeCashDelta(txn: Transaction): number {
   switch (txn.transaction_type) {
     case "BUY": return -(txn.total_amount + txn.commission);
     case "SELL": return txn.total_amount - txn.commission;
-    case "PAY": return txn.total_amount;
+    case "PAY": return txn.total_amount - txn.commission;
     default: return 0; // OPEN for stocks
   }
 }

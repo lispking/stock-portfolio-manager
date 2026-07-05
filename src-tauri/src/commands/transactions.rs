@@ -21,14 +21,14 @@ fn validate_transaction_shares(market: &str, shares: f64, transaction_type: &str
 /// Compute the cash delta for a transaction.
 /// BUY  → cash decreases by total_amount + commission (money leaves the account).
 /// SELL → cash increases by total_amount - commission (money enters the account).
-/// PAY  → cash increases by total_amount (dividend received).
+/// PAY  → cash increases by total_amount - commission (dividend net of fees).
 /// OPEN → no cash impact (initial position entry, not a real trade).
 /// Panics if `transaction_type` is not `"BUY"`, `"SELL"`, `"PAY"`, or `"OPEN"`.
 pub(crate) fn cash_delta(transaction_type: &str, total_amount: f64, commission: f64) -> f64 {
     match transaction_type {
         "BUY" => -(total_amount + commission),
         "SELL" => total_amount - commission,
-        "PAY" => total_amount,
+        "PAY" => total_amount - commission,
         "OPEN" => 0.0,
         other => panic!("Unexpected transaction_type for cash_delta: {}", other),
     }
@@ -158,10 +158,12 @@ pub fn create_transaction(
                 };
                 (total_shares, new_avg)
             } else if transaction_type == "PAY" {
-                // Dividend: shares unchanged.
+                // Dividend: shares unchanged.  Net dividend = total_amount - commission
+                // (the commission/fee is deducted from the gross dividend).
                 // Adjust avg_cost only when the market setting is enabled.
+                let net_amount = total_amount - commission;
                 let new_avg = if adjust && current_shares > 0.0 {
-                    (current_shares * current_avg_cost - total_amount) / current_shares
+                    (current_shares * current_avg_cost - net_amount) / current_shares
                 } else {
                     current_avg_cost
                 };
@@ -387,10 +389,11 @@ pub fn update_transaction(
                 };
                 (new_shares, new_avg)
             } else if old_txn.transaction_type == "PAY" {
-                // Reverse a dividend: add back dividend amount to total cost only if
-                // the market setting was enabled when the dividend was recorded.
+                // Reverse a dividend: add back net dividend to cost basis
+                // only if the market setting was enabled.
+                let old_net = old_txn.total_amount - old_txn.commission;
                 let rev_avg = if old_adjust && cur_shares > 0.0 {
-                    (cur_shares * cur_avg_cost + old_txn.total_amount) / cur_shares
+                    (cur_shares * cur_avg_cost + old_net) / cur_shares
                 } else {
                     cur_avg_cost
                 };
@@ -457,10 +460,10 @@ pub fn update_transaction(
                 };
                 (total_shares, new_avg)
             } else if transaction_type == "PAY" {
-                // Dividend: shares unchanged.
-                // Adjust avg_cost only when the market setting is enabled.
+                // Dividend: shares unchanged.  Net = total_amount - commission.
+                let net_amount = total_amount - commission;
                 let new_avg = if adjust && cur_shares > 0.0 {
-                    (cur_shares * cur_avg_cost - total_amount) / cur_shares
+                    (cur_shares * cur_avg_cost - net_amount) / cur_shares
                 } else {
                     cur_avg_cost
                 };
@@ -585,9 +588,10 @@ pub fn delete_transaction(db: State<Database>, id: String) -> Result<(), String>
                     };
                     (new_shares, new_avg)
                 } else if txn.transaction_type == "PAY" {
-                    // Reverse a dividend: add back dividend amount to avg_cost only if enabled.
+                    // Reverse a dividend: add back net dividend to avg_cost only if enabled.
+                    let net_amount = txn.total_amount - txn.commission;
                     let rev_avg = if adjust && cur_shares > 0.0 {
-                        (cur_shares * cur_avg_cost + txn.total_amount) / cur_shares
+                        (cur_shares * cur_avg_cost + net_amount) / cur_shares
                     } else {
                         cur_avg_cost
                     };
@@ -797,8 +801,9 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 }
                 "PAY" => {
                     if adjust && shares > 0.0 {
+                        let net_amount = tx.total_amount - tx.commission;
                         avg_cost =
-                            (shares * avg_cost - tx.total_amount) / shares;
+                            (shares * avg_cost - net_amount) / shares;
                     }
                 }
                 _ => {}
