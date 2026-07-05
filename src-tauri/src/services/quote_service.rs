@@ -35,7 +35,11 @@ pub fn cash_display_name(symbol: &str) -> String {
 fn market_utc_offset(market: &str) -> chrono::FixedOffset {
     match market {
         "CN" | "HK" => chrono::FixedOffset::east_opt(8 * 3600).unwrap(),
-        "US" => chrono::FixedOffset::west_opt(5 * 3600).unwrap(),
+        // US: Yahoo Finance / Xueqiu / EastMoney daily bars are timestamped at
+        // 00:00 UTC.  Converting to US Eastern time would shift the date back
+        // one day (midnight UTC = previous evening ET), so we keep UTC+0 so
+        // the UTC date matches the intended trading day.
+        "US" => chrono::FixedOffset::east_opt(0).unwrap(),
         _ => chrono::FixedOffset::east_opt(0).unwrap(),
     }
 }
@@ -3155,10 +3159,11 @@ mod tests {
 
     #[test]
     fn test_timestamp_to_market_date_us() {
-        // 2026-03-06 00:00:00 EST (UTC-5) = 2026-03-06 05:00:00 UTC
+        // US daily bars are timestamped at midnight UTC.
+        // 2026-03-06 00:00:00 UTC → should map to 2026-03-06.
         let ts = chrono::NaiveDate::from_ymd_opt(2026, 3, 6)
             .unwrap()
-            .and_hms_opt(5, 0, 0)
+            .and_hms_opt(0, 0, 0)
             .unwrap()
             .and_utc()
             .timestamp();
@@ -3166,7 +3171,7 @@ mod tests {
         assert_eq!(
             date,
             chrono::NaiveDate::from_ymd_opt(2026, 3, 6).unwrap(),
-            "US timestamp at midnight EST should map to 2026-03-06"
+            "US timestamp at midnight UTC should map to 2026-03-06"
         );
     }
 
