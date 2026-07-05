@@ -1129,7 +1129,7 @@ export default function HoldingsPage() {
             rowKey="id"
             loading={detailLoading}
             pagination={false}
-            scroll={{ y: 400 }}
+            scroll={{ x: "max-content", y: 400 }}
             columns={[
               {
                 title: "日期",
