@@ -104,9 +104,9 @@ export default function SnapshotDetail() {
         </Space>
         <Button
           icon={<ReloadOutlined />}
-          onClick={() => {
+          onClick={async () => {
             if (snapshotId) {
-              refreshSnapshot(snapshotId);
+              await refreshSnapshot(snapshotId);
               fetchQuarterlyTransactions(snapshotId);
             }
           }}
