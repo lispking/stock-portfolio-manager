@@ -32,7 +32,7 @@ pub fn create_holding(
 
     // Reject duplicate: same symbol already held in this account.
     let exists = match conn.query_row(
-        "SELECT 1 FROM holdings WHERE account_id = ?1 AND symbol = ?2 LIMIT 1",
+        "SELECT 1 FROM holdings WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2) LIMIT 1",
         rusqlite::params![account_id, symbol],
         |_| Ok(()),
     ) {

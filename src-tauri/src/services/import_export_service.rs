@@ -369,7 +369,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
             // Check for duplicate holdings in the same account
             let exists: bool = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM holdings WHERE symbol = ?1 AND account_id = ?2",
+                    "SELECT COUNT(*) FROM holdings WHERE UPPER(symbol) = UPPER(?1) AND account_id = ?2",
                     rusqlite::params![symbol, import_data.account_id],
                     |r| r.get::<_, i64>(0),
                 )
@@ -453,7 +453,7 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
             // Look up existing holding for this symbol/account.
             let holding_lookup: Result<Option<String>, String> = conn
                 .query_row(
-                    "SELECT id FROM holdings WHERE account_id = ?1 AND symbol = ?2",
+                    "SELECT id FROM holdings WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2)",
                     rusqlite::params![import_data.account_id, symbol],
                     |r| r.get(0),
                 )

@@ -107,10 +107,10 @@ pub fn create_transaction(
     conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(Option<String>,), String> {
-        // Find existing holding for this symbol/account
+        // Find existing holding for this symbol/account (case-insensitive)
         let mut holding_id: Option<String> = conn
             .query_row(
-                "SELECT id FROM holdings WHERE account_id = ?1 AND symbol = ?2",
+                "SELECT id FROM holdings WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2)",
                 rusqlite::params![account_id, symbol],
                 |row| row.get(0),
             )
@@ -225,7 +225,7 @@ pub fn create_transaction(
     // Re-fetch holding_id for the response (after commit)
     let holding_id: Option<String> = conn
         .query_row(
-            "SELECT id FROM holdings WHERE account_id = ?1 AND symbol = ?2",
+            "SELECT id FROM holdings WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2)",
             rusqlite::params![account_id, symbol],
             |row| row.get(0),
         )
@@ -424,7 +424,7 @@ pub fn update_transaction(
         // 2) Apply the new transaction's impact on its holding.
         let holding_id: Option<String> = conn
             .query_row(
-                "SELECT id FROM holdings WHERE account_id = ?1 AND symbol = ?2",
+                "SELECT id FROM holdings WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2)",
                 rusqlite::params![account_id, symbol],
                 |row| row.get(0),
             )
