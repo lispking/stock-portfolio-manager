@@ -996,35 +996,46 @@ pub async fn refresh_quarterly_snapshot(
         let fetch_end = end_date + chrono::Duration::days(2);
         let mut pm: HashMap<String, f64> = HashMap::new();
 
+        // Deduplicate by (symbol, market) — the same stock held in
+        // multiple accounts only needs one history fetch.
+        let mut seen: HashMap<String, (String, &str)> = HashMap::new();
         for h in &holdings {
-            // Skip cash pseudo-symbols ($CASH-USD, etc.) — they have no quotes
             if h.symbol.starts_with("$CASH-") {
                 continue;
             }
-            let provider = match h.market.as_str() {
+            let market = h.market.as_str();
+            seen.entry(h.symbol.clone())
+                .or_insert_with(|| (h.symbol.clone(), market));
+        }
+
+        for (symbol, _market) in seen.values() {
+            let provider = match *_market {
                 "US" => &config.us_provider,
                 "CN" => &config.cn_provider,
                 "HK" => &config.hk_provider,
                 _ => "yahoo",
             };
-            if let Ok(hist) = fetch_stock_history(
-                &h.symbol,
-                &h.market,
+            match fetch_stock_history(
+                symbol,
+                _market,
                 lookback_start,
                 fetch_end,
                 provider,
             )
             .await
             {
-                if let Some((_date, price)) = hist
-                    .into_iter()
-                    .filter(|(d, _)| *d <= end_date)
-                    .last()
-                {
-                    if price > 0.0 {
-                        pm.insert(h.symbol.clone(), price);
+                Ok(hist) => {
+                    if let Some((_date, price)) = hist
+                        .into_iter()
+                        .filter(|(d, _)| *d <= end_date)
+                        .last()
+                    {
+                        if price > 0.0 {
+                            pm.insert(symbol.clone(), price);
+                        }
                     }
                 }
+                Err(_) => {}
             }
         }
 
