@@ -1482,16 +1482,23 @@ pub async fn fetch_stock_history_xueqiu(
         _ => to_xueqiu_us_symbol(symbol),
     };
 
-    // Request enough items to cover the full date range.
-    // Calendar days + a buffer for weekends and holidays ensures we always
-    // get at least as many trading days as the range contains.
-    let calendar_days = (end_date - start_date).num_days() + 10;
-    let count = calendar_days.max(30);
+    // Xueqiu returns trading days going backwards from begin.
+    // Calendar days in range is a safe upper bound (there are fewer
+    // trading days than calendar days), with a minimum of 2.
+    let count = (end_date - start_date).num_days().max(2);
 
-    // The Xueqiu kline API `begin` parameter must be the current timestamp
-    // in milliseconds. The API returns `count` trading days of data going
-    // backwards from `begin` when `type=before`.
-    let begin_ts = chrono::Utc::now().timestamp_millis();
+    // The Xueqiu kline API `begin` parameter is a millisecond timestamp.
+    // With `type=before`, the API returns `count` trading days going
+    // backwards from `begin`.  Use end_date + 1 day (23:59:59 UTC) so the
+    // returned window ends on or after the requested end_date, then filter
+    // client-side to the exact range.
+    let begin_ts = end_date
+        .succ_opt()
+        .unwrap_or(end_date)
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp_millis();
 
     let url = format!(
         "https://stock.xueqiu.com/v5/stock/chart/kline.json?symbol={}&begin={}&period=day&type=before&count=-{}&indicator=kline",
