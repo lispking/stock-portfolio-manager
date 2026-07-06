@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Col,
-  Descriptions,
   Divider,
   Row,
   Space,
@@ -23,10 +22,6 @@ import QuarterlyTransactionsSection from "./QuarterlyTransactionsSection";
 import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Title, Text } = Typography;
-
-function fmt(val: number) {
-  return val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 export default function SnapshotDetail() {
   const { snapshotId } = useParams<{ snapshotId: string }>();
@@ -159,26 +154,27 @@ export default function SnapshotDetail() {
 
       {/* Market breakdown */}
       <Card size="small" className="mb-4" title="分市场市值">
-        <Descriptions size="small" column={{ xs: 1, sm: 3 }}>
-          <Descriptions.Item label="🇺🇸 美股 (USD)">
-            <Text strong>${fmt(snap?.us_value ?? 0)}</Text>
-            <Text type="secondary" className="ml-2">
-              成本 ${fmt(snap?.us_cost ?? 0)}
-            </Text>
-          </Descriptions.Item>
-          <Descriptions.Item label="🇨🇳 A股 (CNY)">
-            <Text strong>¥{fmt(snap?.cn_value ?? 0)}</Text>
-            <Text type="secondary" className="ml-2">
-              成本 ¥{fmt(snap?.cn_cost ?? 0)}
-            </Text>
-          </Descriptions.Item>
-          <Descriptions.Item label="🇭🇰 港股 (HKD)">
-            <Text strong>HK${fmt(snap?.hk_value ?? 0)}</Text>
-            <Text type="secondary" className="ml-2">
-              成本 HK${fmt(snap?.hk_cost ?? 0)}
-            </Text>
-          </Descriptions.Item>
-        </Descriptions>
+        <Row gutter={[12, 8]}>
+          {[
+            { label: "🇨🇳 A股", currency: "CNY", value: snap?.cn_value ?? 0, cost: snap?.cn_cost ?? 0 },
+            { label: "🇭🇰 港股", currency: "HKD", value: snap?.hk_value ?? 0, cost: snap?.hk_cost ?? 0 },
+            { label: "🇺🇸 美股", currency: "USD", value: snap?.us_value ?? 0, cost: snap?.us_cost ?? 0 },
+          ].map(({ label, currency, value, cost }) => (
+            <Col key={label} xs={8} style={{ textAlign: "center" }}>
+              <Text type="secondary">{label}</Text>
+              <br />
+              <Text strong style={{ fontSize: 16 }}>
+                {currency === "CNY" ? "¥" : currency === "HKD" ? "HK$" : "$"}
+                {value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                成本 {currency === "CNY" ? "¥" : currency === "HKD" ? "HK$" : "$"}
+                {cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </Col>
+          ))}
+        </Row>
       </Card>
 
       {/* Category distribution */}
