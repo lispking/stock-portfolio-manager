@@ -95,7 +95,7 @@ interface Props {
   loading?: boolean;
 }
 
-const MARKET_ORDER: Market[] = ["CN", "US", "HK"];
+const MARKET_ORDER: Market[] = ["CN", "HK", "US"];
 
 function buildColumns() {
   return [

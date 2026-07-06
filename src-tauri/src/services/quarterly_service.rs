@@ -1903,6 +1903,23 @@ fn compute_holding_changes(
         }
     }
 
+    // Sort each list: CN → HK → US, then symbol ascending
+    fn market_order(m: &str) -> u8 {
+        match m { "CN" => 1, "HK" => 2, _ => 3 }
+    }
+    let sort_list = |list: &mut Vec<HoldingChangeItem>| {
+        list.sort_by(|a, b| {
+            market_order(&a.market)
+                .cmp(&market_order(&b.market))
+                .then_with(|| a.symbol.cmp(&b.symbol))
+        });
+    };
+    sort_list(&mut new_holdings);
+    sort_list(&mut closed_holdings);
+    sort_list(&mut increased);
+    sort_list(&mut decreased);
+    sort_list(&mut unchanged);
+
     HoldingChanges {
         new_holdings,
         closed_holdings,
@@ -2199,7 +2216,7 @@ pub fn get_quarterly_transactions(
                AND symbol NOT LIKE '$CASH-%'
                AND traded_at >= ?1
                AND traded_at < ?2
-             ORDER BY symbol ASC, traded_at ASC",
+             ORDER BY CASE market WHEN 'CN' THEN 1 WHEN 'HK' THEN 2 ELSE 3 END, symbol ASC, traded_at ASC",
         )
         .map_err(|e| e.to_string())?;
 
