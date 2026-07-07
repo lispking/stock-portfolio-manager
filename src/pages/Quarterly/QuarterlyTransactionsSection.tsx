@@ -42,9 +42,15 @@ function TransactionDetailTable({ transactions }: { transactions: Transaction[] 
       title: "类型",
       dataIndex: "transaction_type",
       key: "transaction_type",
-      render: (t: string) => (
-        <Tag color={t === "BUY" ? "green" : "red"}>{t === "BUY" ? "买入" : "卖出"}</Tag>
-      ),
+      render: (t: string) => {
+        switch (t) {
+          case "BUY": return <Tag color="green">买入</Tag>;
+          case "SELL": return <Tag color="red">卖出</Tag>;
+          case "PAY": return <Tag color="orange">分红</Tag>;
+          case "OPEN": return <Tag color="blue">建仓</Tag>;
+          default: return <Tag>{t}</Tag>;
+        }
+      },
     },
     {
       title: "股数",
