@@ -846,28 +846,67 @@ pub async fn refresh_quarterly_snapshot(
                 .map_err(|e| e.to_string())?
         };
 
-        if existing_notes.is_empty() {
-            return get_quarterly_snapshot_detail(db, snapshot_id);
-        }
-
-        // Build (account_id, symbol) pairs from the existing snapshot
+        // Build (account_id, symbol) pairs: merge snapshot symbols with
+        // symbols that have transactions up to quarter end.  This catches
+        // stocks bought during the quarter that aren't yet in the snapshot.
         let pairs: Vec<(String, String)> = {
             let conn = db.conn.lock().map_err(|e| e.to_string())?;
-            let mut stmt = conn
-                .prepare(
-                    "SELECT DISTINCT account_id, symbol
-                     FROM quarterly_holding_snapshots
-                     WHERE quarterly_snapshot_id = ?1",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(rusqlite::params![snapshot_id], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                })
-                .map_err(|e| e.to_string())?;
-            rows.collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?
+
+            let mut all: Vec<(String, String)> = Vec::new();
+            let mut seen: HashSet<String> = HashSet::new();
+
+            // From snapshot
+            {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT DISTINCT account_id, symbol
+                         FROM quarterly_holding_snapshots
+                         WHERE quarterly_snapshot_id = ?1",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map(rusqlite::params![snapshot_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map_err(|e| e.to_string())?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| e.to_string())?;
+                for (a, s) in rows {
+                    if seen.insert(format!("{}|{}", a.to_uppercase(), s.to_uppercase())) {
+                        all.push((a, s));
+                    }
+                }
+            }
+
+            // From transactions up to quarter end
+            {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT DISTINCT account_id, symbol
+                         FROM transactions
+                         WHERE DATE(traded_at) <= ?1 AND symbol NOT LIKE '$CASH-%'",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map(rusqlite::params![end_date_str], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map_err(|e| e.to_string())?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e: rusqlite::Error| e.to_string())?;
+                for (a, s) in rows {
+                    if seen.insert(format!("{}|{}", a.to_uppercase(), s.to_uppercase())) {
+                        all.push((a, s));
+                    }
+                }
+            }
+
+            all
         };
+
+        if pairs.is_empty() {
+            return get_quarterly_snapshot_detail(db, snapshot_id);
+        }
 
         // Recalculate position for each (account_id, symbol)
         struct RebuiltHolding {
@@ -935,7 +974,7 @@ pub async fn refresh_quarterly_snapshot(
                         "SELECT transaction_type, shares, price, total_amount, commission
                          FROM transactions
                          WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2)
-                           AND traded_at <= ?3
+                           AND DATE(traded_at) <= ?3
                          ORDER BY traded_at ASC, created_at ASC",
                     )
                     .map_err(|e| e.to_string())?;
@@ -2175,8 +2214,8 @@ pub fn get_quarterly_transactions(
              WHERE transaction_type != 'OPEN'
                AND (notes IS NULL OR notes != 'backfill:initial')
                AND symbol NOT LIKE '$CASH-%'
-               AND traded_at >= ?1
-               AND traded_at < ?2
+               AND DATE(traded_at) >= ?1
+               AND DATE(traded_at) < ?2
              ORDER BY CASE market WHEN 'CN' THEN 1 WHEN 'HK' THEN 2 ELSE 3 END, symbol ASC, traded_at ASC",
         )
         .map_err(|e| e.to_string())?;
