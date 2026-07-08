@@ -538,30 +538,119 @@ pub fn get_quarterly_snapshot_detail(
         (snapshot, holdings)
     }; // conn lock released here
 
-    // Compute holding changes vs previous quarter.
-    // Recalculate both quarters' holdings from transactions (not stale
-    // snapshot data) so that multi-account aggregation and fully-closed
-    // positions are correctly reflected.
+    // Compute holding changes: compare Q1 snapshot with (Q1 snapshot + Q2 transactions).
+    // This avoids fragile full-history recalculation that depends on accurate backfill data.
     let prev_q = previous_quarter(&snapshot.quarter).ok();
-    let (holding_changes, previous_quarter) =
-        if let Some(ref pq) = prev_q {
-            match load_holdings_for_quarter(db, pq) {
-                Ok(prev_holdings) => {
-                    let cur_holdings = load_holdings_for_quarter(db, &snapshot.quarter)
-                        .unwrap_or_else(|_| holdings.clone());
-                    let changes =
-                        compute_holding_changes(&prev_holdings, &cur_holdings);
-                    (Some(changes), Some(pq.clone()))
+    let holding_changes = prev_q.as_ref().and_then(|pq| {
+        let prev_holdings = load_holdings_for_quarter_from_snapshot(db, pq).ok()?;
+        let q_txns = get_quarterly_transactions(db, snapshot_id).ok()?;
+
+        // Build Q2 positions: Q1 + Q2 net transactions per symbol
+        // Aggregate txns by uppercase symbol
+        let mut txn_net: HashMap<String, (f64, f64)> = HashMap::new();
+        for g in &q_txns {
+            let key = g.symbol.to_uppercase();
+            let entry = txn_net.entry(key).or_default();
+            entry.0 += g.total_buy_shares - g.total_sell_shares; // net shares change
+            entry.1 += g.total_buy_amount - g.total_sell_amount; // net value change
+        }
+
+        // Aggregate Q1 holdings by uppercase symbol
+        let mut q1_agg: HashMap<String, (f64, f64, String, String, String)> = HashMap::new();
+        for h in &prev_holdings {
+            if h.symbol.starts_with("$CASH-") { continue; }
+            let key = h.symbol.to_uppercase();
+            q1_agg.entry(key)
+                .and_modify(|(s, v, _, _, _)| { *s += h.shares; *v += h.market_value; })
+                .or_insert_with(|| (h.shares, h.market_value, h.name.clone(), h.market.clone(), h.category_name.clone()));
+        }
+
+        // Q2 = Q1 + txn_net
+        // Merge all symbols from Q1 and txn_net
+        let mut all_syms: HashSet<String> = HashSet::new();
+        for k in q1_agg.keys() { all_syms.insert(k.clone()); }
+        for k in txn_net.keys() { all_syms.insert(k.clone()); }
+
+        let mut new_holdings = Vec::new();
+        let mut closed_holdings = Vec::new();
+        let mut increased = Vec::new();
+        let mut decreased = Vec::new();
+        let mut unchanged = Vec::new();
+
+        for sym_upper in &all_syms {
+            let q1 = q1_agg.get(sym_upper);
+            let net = txn_net.get(sym_upper).copied().unwrap_or((0.0, 0.0));
+
+            let q1_shares = q1.map(|q| q.0).unwrap_or(0.0);
+            let q1_value = q1.map(|q| q.1).unwrap_or(0.0);
+            let q2_shares = q1_shares + net.0;
+            let q2_value = q1_value + net.1;
+
+            if q2_shares <= 0.0 {
+                // Fully closed in Q2: was in Q1, now zero
+                if q1.is_some() {
+                    closed_holdings.push(HoldingChangeItem {
+                        symbol: sym_upper.clone(),
+                        name: q1.as_ref().unwrap().2.clone(),
+                        market: q1.as_ref().unwrap().3.clone(),
+                        category_name: q1.as_ref().unwrap().4.clone(),
+                        q1_shares: Some(q1_shares),
+                        q2_shares: None,
+                        q1_value: Some(q1_value),
+                        q2_value: None,
+                        shares_change: -q1_shares,
+                        value_change: -q1_value,
+                    });
                 }
-                Err(_) => (None, None),
+                continue;
             }
-        } else {
-            (None, None)
+
+            let name = q1.map(|q| q.2.clone()).unwrap_or_else(|| sym_upper.clone());
+            let market = q1.map(|q| q.3.clone()).unwrap_or_else(|| "US".to_string());
+            let cat = q1.map(|q| q.4.clone()).unwrap_or_else(|| "未分类".to_string());
+
+            let item = HoldingChangeItem {
+                symbol: sym_upper.clone(),
+                name,
+                market,
+                category_name: cat,
+                q1_shares: if q1.is_some() { Some(q1_shares) } else { None },
+                q2_shares: Some(q2_shares),
+                q1_value: if q1.is_some() { Some(q1_value) } else { None },
+                q2_value: Some(q2_value),
+                shares_change: net.0,
+                value_change: if q1.is_some() { q2_value - q1_value } else { q2_value },
+            };
+
+            if q1.is_none() {
+                new_holdings.push(item);
+            } else if net.0 > 1e-9 {
+                increased.push(item);
+            } else if net.0 < -1e-9 {
+                decreased.push(item);
+            } else {
+                unchanged.push(item);
+            }
+        }
+
+        // Sort CN → HK → US, then symbol
+        fn market_order(m: &str) -> u8 { match m { "CN" => 1, "HK" => 2, _ => 3 } }
+        let sort_list = |list: &mut Vec<HoldingChangeItem>| {
+            list.sort_by(|a, b| market_order(&a.market).cmp(&market_order(&b.market)).then_with(|| a.symbol.cmp(&b.symbol)));
         };
+        sort_list(&mut new_holdings);
+        sort_list(&mut closed_holdings);
+        sort_list(&mut increased);
+        sort_list(&mut decreased);
+        sort_list(&mut unchanged);
+
+        Some(HoldingChanges { new_holdings, closed_holdings, increased, decreased, unchanged })
+    });
+    let previous_quarter = if holding_changes.is_some() { prev_q } else { None };
 
     Ok(QuarterlySnapshotDetail {
         snapshot,
-        holdings,   // DB data for display (has close_price, market_value, etc.)
+        holdings,
         holding_changes,
         previous_quarter,
     })
@@ -1507,21 +1596,13 @@ fn load_snapshot_for_quarter(
 }
 
 /// Load only the holdings for a given quarter. Used for computing holding changes.
-/// Load the effective holdings for a given quarter by recalculating from
-/// transactions up to the quarter end date.  This avoids stale snapshot data
-/// causing incorrect holding-change comparisons (e.g. a stock closed in Q1
-/// incorrectly appearing as closed in Q2 because the Q1 snapshot was stale).
-fn load_holdings_for_quarter(
+/// Read holdings from a quarterly snapshot (fast, no recalculation).
+fn load_holdings_for_quarter_from_snapshot(
     db: &Database,
     quarter: &str,
 ) -> Result<Vec<QuarterlyHoldingSnapshot>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
-    let (year, q) = parse_quarter(quarter)?;
-    let end_date = quarter_end_date(year, q);
-    let end_date_str = end_date.format("%Y-%m-%d").to_string();
-
-    // Get snapshot_id for this quarter (to provide a valid id in the response).
     let snapshot_id: String = conn
         .query_row(
             "SELECT id FROM quarterly_snapshots WHERE quarter = ?1",
@@ -1530,164 +1611,44 @@ fn load_holdings_for_quarter(
         )
         .map_err(|_| format!("No snapshot found for quarter '{}'", quarter))?;
 
-    // Recalculate positions from transactions up to quarter end
-    let cn_adjust = quote_provider_service::market_adjusts_sell_pay_cost(&conn, "CN");
-    let us_adjust = quote_provider_service::market_adjusts_sell_pay_cost(&conn, "US");
-    let hk_adjust = quote_provider_service::market_adjusts_sell_pay_cost(&conn, "HK");
-
-    // Get all distinct (account_id, symbol) from transactions up to quarter end
     let mut stmt = conn
         .prepare(
-            "SELECT DISTINCT t.account_id, t.symbol
-             FROM transactions t
-             WHERE t.traded_at <= ?1
-               AND t.symbol NOT LIKE '$CASH-%'
-             ORDER BY t.symbol",
+            "SELECT id, quarterly_snapshot_id, account_id, account_name, symbol, name, market,
+                    category_name, category_color, shares, avg_cost, close_price,
+                    market_value, cost_value, pnl, pnl_percent, weight, notes
+             FROM quarterly_holding_snapshots
+             WHERE quarterly_snapshot_id = ?1",
         )
         .map_err(|e| e.to_string())?;
-    let pairs: Vec<(String, String)> = stmt
-        .query_map(rusqlite::params![end_date_str], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+
+    let holdings = stmt
+        .query_map(rusqlite::params![snapshot_id], |row| {
+            Ok(QuarterlyHoldingSnapshot {
+                id: row.get(0)?,
+                quarterly_snapshot_id: row.get(1)?,
+                account_id: row.get(2)?,
+                account_name: row.get(3)?,
+                symbol: row.get(4)?,
+                name: row.get(5)?,
+                market: row.get(6)?,
+                category_name: row.get(7)?,
+                category_color: row.get(8)?,
+                shares: row.get(9)?,
+                avg_cost: row.get(10)?,
+                close_price: row.get(11)?,
+                market_value: row.get(12)?,
+                cost_value: row.get(13)?,
+                pnl: row.get(14)?,
+                pnl_percent: row.get(15)?,
+                weight: row.get(16)?,
+                notes: row.get(17)?,
+            })
         })
         .map_err(|e| e.to_string())?
-        .collect::<Result<_, _>>()
-        .map_err(|e: rusqlite::Error| e.to_string())?;
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
 
-    let mut results: Vec<QuarterlyHoldingSnapshot> = Vec::new();
-
-    for (acct_id, sym) in &pairs {
-        let holding_info: Option<(String, String, String, String, String)> = conn
-            .query_row(
-                "SELECT h.name, h.market, COALESCE(a.name, ''),
-                        COALESCE(c.name, '未分类'),
-                        COALESCE(c.color, '#8B8B8B')
-                 FROM holdings h
-                 LEFT JOIN accounts a ON h.account_id = a.id
-                 LEFT JOIN categories c ON h.category_id = c.id
-                 WHERE h.account_id = ?1 AND UPPER(h.symbol) = UPPER(?2)",
-                rusqlite::params![acct_id, sym],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-            )
-            .ok();
-        let (name, market, acct_name, cat_name, cat_color) = match holding_info {
-            Some(h) => h,
-            None => continue,
-        };
-
-        let adjust = match market.as_str() {
-            "CN" => cn_adjust,
-            "US" => us_adjust,
-            "HK" => hk_adjust,
-            _ => true,
-        };
-
-        let mut tx_stmt = conn
-            .prepare(
-                "SELECT transaction_type, shares, price, total_amount, commission
-                 FROM transactions
-                 WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2)
-                   AND traded_at <= ?3
-                 ORDER BY traded_at ASC, created_at ASC",
-            )
-            .map_err(|e| e.to_string())?;
-
-        struct TxRow {
-            tx_type: String,
-            shares: f64,
-            price: f64,
-            total_amount: f64,
-            commission: f64,
-        }
-        let txs: Vec<TxRow> = tx_stmt
-            .query_map(rusqlite::params![acct_id, sym, end_date_str], |row| {
-                Ok(TxRow {
-                    tx_type: row.get(0)?,
-                    shares: row.get(1)?,
-                    price: row.get(2)?,
-                    total_amount: row.get(3)?,
-                    commission: row.get(4)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<_, _>>()
-            .map_err(|e: rusqlite::Error| e.to_string())?;
-
-        let mut shares: f64 = 0.0;
-        let mut avg_cost: f64 = 0.0;
-        for tx in &txs {
-            match tx.tx_type.as_str() {
-                "OPEN" => { shares = tx.shares; avg_cost = tx.price; }
-                "BUY" => {
-                    let total = shares + tx.shares;
-                    if total > 0.0 {
-                        avg_cost = (shares * avg_cost + tx.shares * tx.price + tx.commission) / total;
-                    }
-                    shares = total;
-                }
-                "SELL" => {
-                    let remaining = shares - tx.shares;
-                    if adjust {
-                        avg_cost = if remaining > 0.0 {
-                            (shares * avg_cost - tx.total_amount + tx.commission) / remaining
-                        } else { 0.0 };
-                    }
-                    shares = remaining;
-                }
-                "PAY" => {
-                    if adjust && shares > 0.0 {
-                        let net = tx.total_amount - tx.commission;
-                        avg_cost = (shares * avg_cost - net) / shares;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if shares > 0.0 {
-            // Get close price from daily_holding_snapshots at or before quarter end
-            let close_price: f64 = conn
-                .query_row(
-                    "SELECT close_price FROM daily_holding_snapshots
-                     WHERE symbol = ?1 AND date <= ?2 AND close_price > 0
-                     ORDER BY date DESC LIMIT 1",
-                    rusqlite::params![sym, end_date_str],
-                    |row| row.get(0),
-                )
-                .unwrap_or(0.0);
-            let market_value = shares * close_price;
-            let cost_value = shares * avg_cost;
-            let pnl = market_value - cost_value;
-            let pnl_percent = if cost_value > 0.0 {
-                Some(pnl / cost_value * 100.0)
-            } else {
-                None
-            };
-
-            let dummy_id = uuid::Uuid::new_v4().to_string();
-            results.push(QuarterlyHoldingSnapshot {
-                id: dummy_id,
-                quarterly_snapshot_id: snapshot_id.clone(),
-                account_id: acct_id.clone(),
-                account_name: acct_name,
-                symbol: sym.clone(),
-                name,
-                market: market.clone(),
-                category_name: cat_name,
-                category_color: cat_color,
-                shares,
-                avg_cost,
-                close_price,
-                market_value,
-                cost_value,
-                pnl,
-                pnl_percent,
-                weight: 0.0,
-                notes: None,
-            });
-        }
-    }
-
-    Ok(results)
+    Ok(holdings)
 }
 
 fn compute_market_comparison(
