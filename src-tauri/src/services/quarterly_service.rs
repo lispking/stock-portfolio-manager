@@ -566,6 +566,30 @@ pub fn get_quarterly_snapshot_detail(
         }
 
         // Q2 = Q1 + txn_net
+        // Look up market + category for symbols not in Q1 snapshot
+        let new_sym_info: HashMap<String, (String, String, String, String)> = {
+            let conn = db.conn.lock().ok()?;
+            let mut map: HashMap<String, (String, String, String, String)> = HashMap::new();
+            for sym_upper in txn_net.keys() {
+                if q1_agg.contains_key(sym_upper) { continue; }
+                if let Ok((name, market, cat_name, cat_color)) = conn.query_row(
+                    "SELECT h.name, h.market,
+                            COALESCE(c.name, '未分类'),
+                            COALESCE(c.color, '#8B8B8B')
+                     FROM holdings h
+                     LEFT JOIN categories c ON h.category_id = c.id
+                     WHERE UPPER(h.symbol) = ?1
+                     ORDER BY h.shares DESC
+                     LIMIT 1",
+                    rusqlite::params![sym_upper],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?)),
+                ) {
+                    map.insert(sym_upper.clone(), (name, market, cat_name, cat_color));
+                }
+            }
+            map
+        };
+
         // Merge all symbols from Q1 and txn_net
         let mut all_syms: HashSet<String> = HashSet::new();
         for k in q1_agg.keys() { all_syms.insert(k.clone()); }
@@ -605,9 +629,15 @@ pub fn get_quarterly_snapshot_detail(
                 continue;
             }
 
-            let name = q1.map(|q| q.2.clone()).unwrap_or_else(|| sym_upper.clone());
-            let market = q1.map(|q| q.3.clone()).unwrap_or_else(|| "US".to_string());
-            let cat = q1.map(|q| q.4.clone()).unwrap_or_else(|| "未分类".to_string());
+            let name = q1.map(|q| q.2.clone())
+                .or_else(|| new_sym_info.get(sym_upper).map(|i| i.0.clone()))
+                .unwrap_or_else(|| sym_upper.clone());
+            let market = q1.map(|q| q.3.clone())
+                .or_else(|| new_sym_info.get(sym_upper).map(|i| i.1.clone()))
+                .unwrap_or_else(|| "US".to_string());
+            let cat = q1.map(|q| q.4.clone())
+                .or_else(|| new_sym_info.get(sym_upper).map(|i| i.2.clone()))
+                .unwrap_or_else(|| "未分类".to_string());
 
             let item = HoldingChangeItem {
                 symbol: sym_upper.clone(),
