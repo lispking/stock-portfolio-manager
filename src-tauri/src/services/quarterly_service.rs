@@ -545,6 +545,16 @@ pub fn get_quarterly_snapshot_detail(
         let prev_holdings = load_holdings_for_quarter_from_snapshot(db, pq).ok()?;
         let q_txns = get_quarterly_transactions(db, snapshot_id).ok()?;
 
+        // Aggregate Q2 snapshot holdings by uppercase symbol for market values
+        let mut q2_agg: HashMap<String, (f64, f64)> = HashMap::new();
+        for h in &holdings {
+            if h.symbol.starts_with("$CASH-") { continue; }
+            let key = h.symbol.to_uppercase();
+            q2_agg.entry(key)
+                .and_modify(|(s, v)| { *s += h.shares; *v += h.market_value; })
+                .or_insert((h.shares, h.market_value));
+        }
+
         // Build Q2 positions: Q1 + Q2 net transactions per symbol
         // Aggregate txns by uppercase symbol
         let mut txn_net: HashMap<String, (f64, f64)> = HashMap::new();
@@ -608,7 +618,7 @@ pub fn get_quarterly_snapshot_detail(
             let q1_shares = q1.map(|q| q.0).unwrap_or(0.0);
             let q1_value = q1.map(|q| q.1).unwrap_or(0.0);
             let q2_shares = q1_shares + net.0;
-            let q2_value = q1_value + net.1;
+            let q2_value = q2_agg.get(sym_upper).map(|q| q.1).unwrap_or_else(|| q1_value + net.1);
 
             if q2_shares <= 0.0 {
                 // Fully closed in Q2: was in Q1, now zero
