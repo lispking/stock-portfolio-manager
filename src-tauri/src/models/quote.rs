@@ -11,7 +11,7 @@ pub struct StockQuote {
     pub change_percent: f64,
     pub high: f64,
     pub low: f64,
-    pub volume: u64,
+    pub volume: i64,
     pub updated_at: String,
 }
 

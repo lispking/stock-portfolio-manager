@@ -198,7 +198,7 @@ pub fn save_quotes_to_db(db: &Database, quotes: &[StockQuote]) -> Result<(), Str
             q.change_percent,
             q.high,
             q.low,
-            q.volume as i64,
+            q.volume,
             q.updated_at,
         ])
         .map_err(|e| e.to_string())?;
@@ -376,7 +376,7 @@ pub async fn fetch_yahoo_quote(symbol: &str, market: &str) -> Result<StockQuote,
         .and_then(|q| q.volume.as_ref())
         .and_then(|v| v.last())
         .and_then(|v| *v)
-        .unwrap_or(0);
+        .unwrap_or(0) as i64;
 
     let name = meta
         .short_name
@@ -686,7 +686,7 @@ fn parse_eastmoney_quote(symbol: &str, market: &str, resp: EastMoneyResponse) ->
 
     let high = data.f44.unwrap_or(0.0);
     let low = data.f45.unwrap_or(0.0);
-    let volume = data.f47.unwrap_or(0.0) as u64;
+    let volume = data.f47.unwrap_or(0.0) as i64;
 
     Ok(StockQuote {
         symbol: symbol.to_string(),
@@ -1071,7 +1071,7 @@ fn parse_xueqiu_quote(symbol: &str, market: &str, resp: XueqiuResponse) -> Resul
 
     let high = quote.high.unwrap_or(0.0);
     let low = quote.low.unwrap_or(0.0);
-    let volume = quote.volume.unwrap_or(0.0) as u64;
+    let volume = quote.volume.unwrap_or(0.0) as i64;
 
     Ok(StockQuote {
         symbol: symbol.to_string(),

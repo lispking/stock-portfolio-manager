@@ -247,11 +247,15 @@ export default function ImportPage() {
 
       {/* Import Section */}
       <Card title={<><UploadOutlined /> 数据导入</>}>
-        <Steps current={currentStep} style={{ marginBottom: 24 }}>
-          <Steps.Step title="上传文件" />
-          <Steps.Step title="预览确认" />
-          <Steps.Step title="导入完成" />
-        </Steps>
+        <Steps
+          current={currentStep}
+          style={{ marginBottom: 24 }}
+          items={[
+            { title: "上传文件" },
+            { title: "预览确认" },
+            { title: "导入完成" },
+          ]}
+        />
 
         {currentStep === 0 && (
           <Space direction="vertical" style={{ width: "100%" }}>
