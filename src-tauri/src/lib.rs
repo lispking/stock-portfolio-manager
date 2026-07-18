@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .menu(|app| menu::build_menu(app))
         .setup(|app| {
             // Register the Window submenu with NSApp so macOS injects
@@ -58,6 +59,15 @@ pub fn run() {
                     Ok(None) => {}
                     Err(e) => eprintln!("Failed to load cached exchange rates from DB: {}", e),
                 }
+            }
+
+            // Auto-backup check on startup (background)
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    crate::commands::backup::auto_backup_if_needed(&handle);
+                });
             }
 
             // Spawn a background task to refresh holding quotes from the API.
@@ -247,6 +257,10 @@ pub fn run() {
             commands::stock_splits::get_option_share_lots,
             commands::stock_splits::add_option_share_lot,
             commands::stock_splits::delete_option_share_lot,
+            // Backup
+            commands::backup::get_backup_config,
+            commands::backup::set_backup_config,
+            commands::backup::backup_database_now,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

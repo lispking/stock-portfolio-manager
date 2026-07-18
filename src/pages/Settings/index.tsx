@@ -3,6 +3,7 @@ import { SettingOutlined } from "@ant-design/icons";
 import AIPage from "../AI";
 import GeneralSettings from "./GeneralSettings";
 import StockSplitSettings from "./StockSplitSettings";
+import BackupSettings from "./BackupSettings";
 
 const { Title } = Typography;
 
@@ -14,6 +15,16 @@ export default function SettingsPage() {
       children: <GeneralSettings />,
     },
     {
+      key: "stockSplits",
+      label: "📊 期权管理",
+      children: <StockSplitSettings />,
+    },
+    {
+      key: "backup",
+      label: "💾 SQLite 备份",
+      children: <BackupSettings />,
+    },
+    {
       key: "ai",
       label: (
         <Space>
@@ -22,11 +33,6 @@ export default function SettingsPage() {
         </Space>
       ),
       children: <AIPage />,
-    },
-    {
-      key: "stockSplits",
-      label: "📊 期权管理",
-      children: <StockSplitSettings />,
     },
   ];
 

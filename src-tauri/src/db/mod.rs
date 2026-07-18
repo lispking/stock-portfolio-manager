@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 pub struct Database {
     pub conn: Mutex<Connection>,
+    pub path: String,
 }
 
 impl Database {
@@ -10,6 +11,7 @@ impl Database {
         let conn = Connection::open(path)?;
         let db = Database {
             conn: Mutex::new(conn),
+            path: path.to_string(),
         };
         db.run_migrations()?;
         Ok(db)
