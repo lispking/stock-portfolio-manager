@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Checkbox, Form, Input, Radio, Select, Space, Tabs, Typography, message } from "antd";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useQuoteStore } from "../../stores/quoteStore";
 import { useSettingsStore, type ColorScheme } from "../../stores/settingsStore";
 import { useXueqiuLogin } from "../../hooks/useXueqiuLogin";
@@ -58,6 +59,35 @@ export default function GeneralSettings() {
       .catch(() => {
         // Use defaults on error
       });
+  }, []);
+
+  // When the user closes the login window, the hook auto-captures cookies and
+  // emits this event. Refresh the form so the captured values show up
+  // immediately in the "手动填写" tab without a manual reload.
+  //
+  // `listen` returns a promise; we must guard against the StrictMode
+  // mount→unmount→remount cycle, otherwise two listeners end up registered
+  // concurrently and every capture pops the toast twice. We track a
+  // `cancelled` flag and resolve the unlisten in the cleanup, so the first
+  // (discarded) listener is removed before the second one is active.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    listen<QuoteProviderConfig>("xueqiu-login-captured", (event) => {
+      setProviderConfig(event.payload);
+      message.success("已从雪球登录会话抓取 Cookie 并保存");
+    }).then((fn) => {
+      if (cancelled) {
+        // Component already unmounted during the async gap — tear it down.
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   const handleIntervalChange = (value: number) => {

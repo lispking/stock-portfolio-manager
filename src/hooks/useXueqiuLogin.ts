@@ -6,17 +6,19 @@ import type { QuoteProviderConfig } from "../types";
 /**
  * Drives the embedded Xueqiu (雪球) login flow.
  *
- * Two-step UX:
- *  1. `openLoginWindow()` – opens (or focuses) a separate OS window that loads
- *     `https://xueqiu.com/`. The user completes login inside it (scan QR,
- *     username/password, etc.).
- *  2. `capture()` – reads `xq_a_token` and `u` from that window's cookie store
- *     (via the Rust backend, which can see HttpOnly cookies) and persists them.
+ * The login window loads `https://xueqiu.com/`. The user logs in there (QR /
+ * password), then EITHER clicks "我已登录，抓取 Cookie" in the main window OR
+ * simply closes the login window — both paths trigger `capture()`.
  *
- * We deliberately do NOT try to auto-detect login success by watching URL
- * changes, because Xueqiu's post-login URL is not deterministic. Instead the
- * user clicks an explicit "我已登录，抓取 Cookie" button in the main window.
- * This is the most reliable cross-platform approach.
+ * Auto-capture on close: we intercept the login window's `closeRequested`
+ * event, prevent the default close, run `capture_xueqiu_cookies`, and then
+ * `destroy()` the window. At close time the webview cookie store still holds
+ * the session cookies, so this works even though the user never returns to the
+ * main window.
+ *
+ * Cookie capture itself is done by the Rust backend via
+ * `WebviewWindow::cookies_for_url`, which can read HttpOnly cookies that JS
+ * (`document.cookie`) cannot.
  */
 export function useXueqiuLogin() {
   const [loginWindowOpen, setLoginWindowOpen] = useState(false);
@@ -61,13 +63,39 @@ export function useXueqiuLogin() {
       resizable: true,
       minimizable: true,
       maximizable: true,
-      // Keep this window out of the taskbar on platforms that support it so
-      // it feels like a modal helper rather than a second app window.
       skipTaskbar: false,
     });
 
     win.once("tauri://created", () => {
       setLoginWindowOpen(true);
+
+      // Auto-capture on close. We intercept the close so the webview cookie
+      // store is still alive, then ask the backend to capture AND close the
+      // window itself. Closing from the backend is reliable across platforms;
+      // calling WebviewWindow.destroy() from this renderer after preventDefault
+      // has proven flaky and sometimes leaves the window stuck open.
+      win
+        .onCloseRequested(async (event) => {
+          event.preventDefault();
+          try {
+            const config = await invoke<QuoteProviderConfig>(
+              "capture_xueqiu_cookies",
+              { closeWindow: true }
+            );
+            // Capture succeeded → notify the main window to refresh its UI.
+            await win.emit("xueqiu-login-captured", config);
+          } catch (e) {
+            // Capture failed (e.g. user hadn't logged in yet). The backend has
+            // already closed the window because closeWindow=true; nothing more
+            // to do here. This is an expected, benign path.
+            console.info("Xueqiu login window closed without capture:", e);
+          } finally {
+            setLoginWindowOpen(false);
+          }
+        })
+        .catch(() => {
+          // Listener registration failure is non-fatal.
+        });
     });
     win.once("tauri://error", (e) => {
       console.error("Failed to open Xueqiu login window:", e);

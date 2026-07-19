@@ -31,11 +31,18 @@ pub async fn update_quote_provider_config(
 /// (which includes HttpOnly cookies – `document.cookie` cannot) and persist
 /// both values via the same path as manual entry.
 ///
+/// When `close_window` is `true` (used by the auto-capture-on-close flow), the
+/// login window is destroyed from the backend regardless of whether capture
+/// succeeded. Closing from the backend avoids the cross-window fragility of
+/// `WebviewWindow.destroy()` called from the login window's own renderer after
+/// `preventDefault()` has intercepted the close.
+///
 /// Returns the updated config so the frontend can refresh its inputs.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn capture_xueqiu_cookies(
     app: tauri::AppHandle,
     db: State<'_, Database>,
+    close_window: Option<bool>,
 ) -> Result<QuoteProviderConfig, String> {
     let win = app
         .get_webview_window("xueqiu_login")
@@ -58,8 +65,18 @@ pub async fn capture_xueqiu_cookies(
         }
     }
 
+    // If the caller asked us to close the window, do so from the backend in
+    // every outcome (success or failure). This guarantees the window always
+    // closes, which the frontend's post-preventDefault destroy() cannot.
+    let should_close = close_window.unwrap_or(false);
+    let close_window = || {
+        if let Some(w) = app.get_webview_window("xueqiu_login") {
+            let _ = w.destroy();
+        }
+    };
+
     // Both values are required: xq_a_token for the API session, u for the kline API.
-    match (xq_a_token, u_value) {
+    let result = match (xq_a_token, u_value) {
         (Some(token), Some(u)) => {
             // Read the existing config so we preserve provider and cost-adjust choices.
             let mut config = quote_provider_service::get_quote_provider_config(&db)?;
@@ -81,7 +98,12 @@ pub async fn capture_xueqiu_cookies(
             "未检测到用户 ID（缺少 u）。请确认已在雪球窗口内完成登录（扫码 / 账号密码）。"
                 .to_string(),
         ),
+    };
+
+    if should_close {
+        close_window();
     }
+    result
 }
 
 /// Parse a raw cookie string pasted by the user and persist `xq_a_token` + `u`.
