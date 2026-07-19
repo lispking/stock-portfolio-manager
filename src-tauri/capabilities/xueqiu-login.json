@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "xueqiu-login",
+  "description": "Capabilities for the embedded Xueqiu login window. The window only loads the external xueqiu.com site; it does not call any Tauri APIs itself.",
+  "windows": ["xueqiu_login"],
+  "permissions": ["core:default"]
+}

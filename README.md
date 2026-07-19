@@ -233,7 +233,19 @@ SQLite database is stored in the system app data directory:
 | Exchange Rates | ExchangeRate-API | USD/CNY/HKD |
 | Benchmark Indices | Yahoo Finance API | S&P 500, NASDAQ, CSI 300, HSI |
 
-You need to configure Xueqiu cookie in the setting in order to access Xueqiu API.
+The Xueqiu API requires a session cookie (`xq_a_token`) and a user id (`u`) to
+return quotes and historical candles. There are three ways to configure them in
+**Settings → 雪球 Cookie 设置**:
+
+1. **One-click login (recommended)** — click 「一键登录雪球」to open the Xueqiu
+   site in an embedded window, finish login there, then click 「我已登录，抓取
+   Cookie」. The app reads the cookies (including HttpOnly ones) directly from
+   the embedded webview, so no manual copy-paste is needed.
+2. **Paste a full cookie string** — copy the whole `Cookie:` header from your
+   browser's DevTools and the app will parse out `xq_a_token` and `u` for you.
+3. **Manual entry (advanced)** — paste the two values separately.
+
+Cookies expire periodically; just repeat option 1 to refresh them.
 
 ## License
 
