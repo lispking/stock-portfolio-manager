@@ -35,3 +35,7 @@ yarn-error.log*
 
 # Tools build output
 tools/*/target/
+
+# Package manager lock files
+bun.lock
+package-lock.json

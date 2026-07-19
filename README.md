@@ -3,7 +3,7 @@
 A desktop application for managing personal stock portfolios across US, CN (A-shares), and HK markets. 
 It can run on MacOS, Windows and Linux.
 
-Built with **Tauri 2.0** + **React 18** + **TypeScript** + **Rust** + **SQLite**.
+Built with **Tauri 2.0** + **React 19** + **TypeScript** + **Rust** + **SQLite**.
 
 ## ✨ Features
 
@@ -56,7 +56,7 @@ Built with **Tauri 2.0** + **React 18** + **TypeScript** + **Rust** + **SQLite**
 | Layer | Technology |
 |-------|-----------|
 | Desktop Framework | Tauri 2.0 |
-| Frontend | React 18 + TypeScript + Vite |
+| Frontend | React 19 + TypeScript + Vite |
 | Styling | TailwindCSS + Ant Design |
 | Charts | ECharts (echarts-for-react) |
 | State Management | Zustand |
@@ -120,8 +120,8 @@ stock-portfolio-manager/
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 18
-- [Rust](https://rustup.rs/) >= 1.70
+- [Node.js](https://nodejs.org/) >= 26
+- [Rust](https://rustup.rs/) 1.97.1 (pinned via `rust-toolchain.toml`)
 - Tauri system dependencies ([guide](https://tauri.app/v2/guides/getting-started/prerequisites))
 
 ### Development
