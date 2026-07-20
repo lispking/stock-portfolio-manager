@@ -14,7 +14,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .menu(|app| menu::build_menu(app))
+        .menu(menu::build_menu)
         .setup(|app| {
             // Register the Window submenu with NSApp so macOS injects
             // "Bring All to Front", "Move to [Display]", and the window list.
@@ -27,8 +27,8 @@ pub fn run() {
                 .expect("failed to get app data dir");
             std::fs::create_dir_all(&app_dir)?;
             let db_path = app_dir.join("portfolio.db");
-            let db = Database::new(db_path.to_str().unwrap())
-                .expect("failed to initialize database");
+            let db =
+                Database::new(db_path.to_str().unwrap()).expect("failed to initialize database");
             app.manage(db);
             app.manage(ExchangeRateCache::new());
             app.manage(QuoteCache::new());
@@ -89,20 +89,16 @@ pub fn run() {
                             return;
                         }
                     };
-                    let mut stmt = match conn
-                        .prepare("SELECT DISTINCT symbol, market FROM holdings")
-                    {
-                        Ok(s) => s,
-                        Err(e) => {
-                            eprintln!("Background refresh: failed to prepare query: {}", e);
-                            return;
-                        }
-                    };
+                    let mut stmt =
+                        match conn.prepare("SELECT DISTINCT symbol, market FROM holdings") {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("Background refresh: failed to prepare query: {}", e);
+                                return;
+                            }
+                        };
                     let rows = match stmt.query_map([], |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                        ))
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                     }) {
                         Ok(r) => r,
                         Err(e) => {
@@ -278,6 +274,8 @@ pub fn run() {
             commands::backup::get_backup_config,
             commands::backup::set_backup_config,
             commands::backup::backup_database_now,
+            // Factory reset (wipe all data & restore default settings)
+            commands::reset::factory_reset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -49,8 +49,7 @@ fn market_utc_offset(market: &str) -> chrono::FixedOffset {
 /// when timestamps representing a date in CST (UTC+8) are interpreted in UTC.
 pub fn timestamp_to_market_date(ts_secs: i64, market: &str) -> Option<chrono::NaiveDate> {
     let offset = market_utc_offset(market);
-    chrono::DateTime::from_timestamp(ts_secs, 0)
-        .map(|dt| dt.with_timezone(&offset).date_naive())
+    chrono::DateTime::from_timestamp(ts_secs, 0).map(|dt| dt.with_timezone(&offset).date_naive())
 }
 
 /// Build a synthetic [`StockQuote`] for a cash symbol.
@@ -130,7 +129,10 @@ impl QuoteCache {
 
     /// Returns all cached quotes for the given symbols, plus the list of
     /// symbols that are missing from the cache.
-    pub fn get_batch(&self, symbols: &[(String, String)]) -> (Vec<StockQuote>, Vec<(String, String)>) {
+    pub fn get_batch(
+        &self,
+        symbols: &[(String, String)],
+    ) -> (Vec<StockQuote>, Vec<(String, String)>) {
         let lock = self.inner.lock().unwrap();
         let mut cached = Vec::new();
         let mut missing = Vec::new();
@@ -142,6 +144,14 @@ impl QuoteCache {
             }
         }
         (cached, missing)
+    }
+
+    /// Drop every cached quote. Used by `factory_reset` so the in-memory
+    /// cache does not keep serving prices that no longer correspond to any
+    /// holding after the database is wiped.
+    pub fn clear(&self) {
+        let mut lock = self.inner.lock().unwrap();
+        lock.clear();
     }
 }
 
@@ -235,7 +245,13 @@ pub async fn fetch_quotes_batch_cached_with_providers(
 
     if force_refresh {
         // Force refresh: fetch all symbols from the upstream API.
-        let fresh = fetch_quotes_batch_with_providers(unique_symbols.clone(), us_provider, hk_provider, cn_provider).await?;
+        let fresh = fetch_quotes_batch_with_providers(
+            unique_symbols.clone(),
+            us_provider,
+            hk_provider,
+            cn_provider,
+        )
+        .await?;
         cache.set_batch(&fresh);
 
         // Fall back to stale cache for any symbols that failed to fetch
@@ -258,7 +274,9 @@ pub async fn fetch_quotes_batch_cached_with_providers(
         return Ok(result);
     }
 
-    let fresh = fetch_quotes_batch_with_providers(missing.clone(), us_provider, hk_provider, cn_provider).await?;
+    let fresh =
+        fetch_quotes_batch_with_providers(missing.clone(), us_provider, hk_provider, cn_provider)
+            .await?;
     cache.set_batch(&fresh);
     result.extend(fresh);
 
@@ -346,7 +364,10 @@ pub async fn fetch_yahoo_quote(symbol: &str, market: &str) -> Result<StockQuote,
         .map_err(|e| format!("Failed to parse Yahoo response for {}: {}", symbol, e))?;
 
     if let Some(err) = &data.chart.error {
-        return Err(format!("Yahoo Finance API returned error for {}: {}", symbol, err));
+        return Err(format!(
+            "Yahoo Finance API returned error for {}: {}",
+            symbol, err
+        ));
     }
 
     let result = data
@@ -405,7 +426,10 @@ pub async fn fetch_us_quote(symbol: &str) -> Result<StockQuote, String> {
 }
 
 /// Fetch a US stock quote using the specified provider.
-pub async fn fetch_us_quote_with_provider(symbol: &str, provider: &str) -> Result<StockQuote, String> {
+pub async fn fetch_us_quote_with_provider(
+    symbol: &str,
+    provider: &str,
+) -> Result<StockQuote, String> {
     match provider {
         "eastmoney" => fetch_eastmoney_us_quote(symbol).await,
         "xueqiu" => fetch_xueqiu_us_quote(symbol).await,
@@ -417,7 +441,10 @@ pub async fn fetch_us_quote_with_provider(symbol: &str, provider: &str) -> Resul
 }
 
 /// Fetch a HK stock quote using the specified provider.
-pub async fn fetch_hk_quote_with_provider(symbol: &str, provider: &str) -> Result<StockQuote, String> {
+pub async fn fetch_hk_quote_with_provider(
+    symbol: &str,
+    provider: &str,
+) -> Result<StockQuote, String> {
     match provider {
         "eastmoney" => fetch_eastmoney_hk_quote(symbol).await,
         "xueqiu" => fetch_xueqiu_hk_quote(symbol).await,
@@ -439,7 +466,10 @@ pub async fn fetch_cn_quote(symbol: &str) -> Result<StockQuote, String> {
 }
 
 /// Fetch a CN A-share stock quote using the specified provider.
-pub async fn fetch_cn_quote_with_provider(symbol: &str, provider: &str) -> Result<StockQuote, String> {
+pub async fn fetch_cn_quote_with_provider(
+    symbol: &str,
+    provider: &str,
+) -> Result<StockQuote, String> {
     match provider {
         "xueqiu" => fetch_xueqiu_cn_quote(symbol).await,
         // Default to eastmoney for CN
@@ -549,10 +579,12 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
         ));
     }
 
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read East Money response body for {}: {}", symbol, e))?;
+    let body = response.text().await.map_err(|e| {
+        format!(
+            "Failed to read East Money response body for {}: {}",
+            symbol, e
+        )
+    })?;
 
     let resp = parse_eastmoney_body(&body, &symbol)?;
 
@@ -578,10 +610,12 @@ async fn fetch_eastmoney_us_quote(symbol: &str) -> Result<StockQuote, String> {
         ));
     }
 
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read East Money response body for {}: {}", symbol, e))?;
+    let body = response.text().await.map_err(|e| {
+        format!(
+            "Failed to read East Money response body for {}: {}",
+            symbol, e
+        )
+    })?;
 
     let resp = parse_eastmoney_body(&body, symbol)?;
 
@@ -607,10 +641,12 @@ async fn fetch_eastmoney_hk_quote(symbol: &str) -> Result<StockQuote, String> {
         ));
     }
 
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read East Money response body for {}: {}", symbol, e))?;
+    let body = response.text().await.map_err(|e| {
+        format!(
+            "Failed to read East Money response body for {}: {}",
+            symbol, e
+        )
+    })?;
 
     let resp = parse_eastmoney_body(&body, symbol)?;
 
@@ -628,7 +664,12 @@ fn to_eastmoney_secid(symbol: &str) -> Result<String, String> {
     let market_id = match prefix {
         "sh" => "1",
         "sz" => "0",
-        _ => return Err(format!("Unknown CN market prefix '{}' in symbol {}", prefix, symbol)),
+        _ => {
+            return Err(format!(
+                "Unknown CN market prefix '{}' in symbol {}",
+                prefix, symbol
+            ))
+        }
     };
     Ok(format!("{}.{}", market_id, code))
 }
@@ -649,9 +690,7 @@ fn to_eastmoney_us_secid(symbol: &str) -> String {
 /// Convert a HK stock symbol to East Money secid format: "116.{5-digit code}".
 /// Strips the ".HK" suffix if present and zero-pads to 5 digits.
 fn to_eastmoney_hk_secid(symbol: &str) -> Result<String, String> {
-    let code = symbol
-        .trim_end_matches(".HK")
-        .trim_end_matches(".hk");
+    let code = symbol.trim_end_matches(".HK").trim_end_matches(".hk");
     // Zero-pad to 5 digits if the code is purely numeric
     if code.chars().all(|c| c.is_ascii_digit()) {
         let padded = format!("{:0>5}", code);
@@ -662,20 +701,30 @@ fn to_eastmoney_hk_secid(symbol: &str) -> Result<String, String> {
 }
 
 /// Parse the East Money JSON response into a `StockQuote`.
-fn parse_eastmoney_quote(symbol: &str, market: &str, resp: EastMoneyResponse) -> Result<StockQuote, String> {
-    let data = resp
-        .data
-        .ok_or_else(|| format!("No data from East Money for {}. Symbol may be invalid.", symbol))?;
+fn parse_eastmoney_quote(
+    symbol: &str,
+    market: &str,
+    resp: EastMoneyResponse,
+) -> Result<StockQuote, String> {
+    let data = resp.data.ok_or_else(|| {
+        format!(
+            "No data from East Money for {}. Symbol may be invalid.",
+            symbol
+        )
+    })?;
 
     let name = data
         .f58
         .ok_or_else(|| format!("Missing stock name in East Money response for {}", symbol))?;
-    let current_price = data
-        .f43
-        .ok_or_else(|| format!("Missing current price in East Money response for {}", symbol))?;
+    let current_price = data.f43.ok_or_else(|| {
+        format!(
+            "Missing current price in East Money response for {}",
+            symbol
+        )
+    })?;
     let previous_close = data.f60.unwrap_or(0.0);
 
-    let change = data.f169.unwrap_or_else(|| current_price - previous_close);
+    let change = data.f169.unwrap_or(current_price - previous_close);
     let change_percent = data.f170.unwrap_or_else(|| {
         if previous_close != 0.0 {
             change / previous_close * 100.0
@@ -729,10 +778,8 @@ static XUEQIU_USER_U: Mutex<Option<String>> = Mutex::new(None);
 static XUEQIU_AUTO_COOKIE: Mutex<Option<String>> = Mutex::new(None);
 static LAST_QUOTE_WARNING: Mutex<Option<String>> = Mutex::new(None);
 
-const XUEQIU_COOKIE_EXPIRED_HINT: &str =
-    "雪球 Cookie 可能已经过期，请到设置页面更新雪球 Cookie。";
-const XUEQIU_API_FAILED_HINT: &str =
-    "访问雪球行情服务失败，请检查网络连接或稍后重试。";
+const XUEQIU_COOKIE_EXPIRED_HINT: &str = "雪球 Cookie 可能已经过期，请到设置页面更新雪球 Cookie。";
+const XUEQIU_API_FAILED_HINT: &str = "访问雪球行情服务失败，请检查网络连接或稍后重试。";
 
 fn is_xueqiu_cookie_expired_error(err: &str) -> bool {
     err.contains("Xueqiu API error")
@@ -742,9 +789,7 @@ fn is_xueqiu_cookie_expired_error(err: &str) -> bool {
 }
 
 fn is_xueqiu_request_error(err: &str) -> bool {
-    err.contains("Xueqiu")
-        || err.contains("xueqiu.com")
-        || err.contains("stock.xueqiu.com")
+    err.contains("Xueqiu") || err.contains("xueqiu.com") || err.contains("stock.xueqiu.com")
 }
 
 pub fn clear_quote_warning() {
@@ -837,7 +882,10 @@ async fn ensure_xueqiu_token() -> Result<(), String> {
         if let Ok(s) = header_val.to_str() {
             if s.starts_with("xq_a_token=") {
                 let val_start = "xq_a_token=".len();
-                let val_end = s[val_start..].find(';').map(|i| val_start + i).unwrap_or(s.len());
+                let val_end = s[val_start..]
+                    .find(';')
+                    .map(|i| val_start + i)
+                    .unwrap_or(s.len());
                 let token_value = &s[val_start..val_end];
                 if !token_value.is_empty() {
                     auto_token = Some(token_value.to_string());
@@ -942,7 +990,10 @@ async fn send_xueqiu_request(url: &str, symbol: &str) -> Result<reqwest::Respons
 
         let result = req.send().await;
         match result {
-            Ok(resp) if resp.status() == reqwest::StatusCode::BAD_REQUEST && attempt < XUEQIU_MAX_RETRIES => {
+            Ok(resp)
+                if resp.status() == reqwest::StatusCode::BAD_REQUEST
+                    && attempt < XUEQIU_MAX_RETRIES =>
+            {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 reset_xueqiu_token();
                 ensure_xueqiu_token().await?;
@@ -1038,7 +1089,11 @@ fn parse_xueqiu_body(body: &str, symbol: &str) -> Result<XueqiuResponse, String>
 }
 
 /// Parse the Xueqiu API response into a `StockQuote`.
-fn parse_xueqiu_quote(symbol: &str, market: &str, resp: XueqiuResponse) -> Result<StockQuote, String> {
+fn parse_xueqiu_quote(
+    symbol: &str,
+    market: &str,
+    resp: XueqiuResponse,
+) -> Result<StockQuote, String> {
     if let Some(err_code) = resp.error_code {
         if err_code != 0 {
             let desc = resp.error_description.unwrap_or_default();
@@ -1064,7 +1119,7 @@ fn parse_xueqiu_quote(symbol: &str, market: &str, resp: XueqiuResponse) -> Resul
         .ok_or_else(|| format!("Missing current price in Xueqiu response for {}", symbol))?;
     let previous_close = quote.last_close.unwrap_or(0.0);
 
-    let change = quote.chg.unwrap_or_else(|| current_price - previous_close);
+    let change = quote.chg.unwrap_or(current_price - previous_close);
     let change_percent = quote.percent.unwrap_or_else(|| {
         if previous_close != 0.0 {
             change / previous_close * 100.0
@@ -1119,9 +1174,7 @@ fn to_xueqiu_us_symbol(symbol: &str) -> String {
 /// Convert a HK stock symbol to Xueqiu format.
 /// Strips the ".HK" suffix if present and zero-pads to 5 digits.
 fn to_xueqiu_hk_symbol(symbol: &str) -> Result<String, String> {
-    let code = symbol
-        .trim_end_matches(".HK")
-        .trim_end_matches(".hk");
+    let code = symbol.trim_end_matches(".HK").trim_end_matches(".hk");
     if code.chars().all(|c| c.is_ascii_digit()) {
         let padded = format!("{:0>5}", code);
         Ok(padded)
@@ -1267,7 +1320,10 @@ pub async fn fetch_quotes_batch_with_providers(
         };
         if xueqiu_failed && uses_xueqiu {
             // Skip: Xueqiu is already known to be unreachable for this batch.
-            eprintln!("Skipping {} ({}) – Xueqiu already failed for this batch", symbol, market);
+            eprintln!(
+                "Skipping {} ({}) – Xueqiu already failed for this batch",
+                symbol, market
+            );
             continue;
         }
         let result = match market.as_str() {
@@ -1279,7 +1335,10 @@ pub async fn fetch_quotes_batch_with_providers(
         match result {
             Ok(quote) => quotes.push(quote),
             Err(e) => {
-                eprintln!("Warning: failed to fetch quote for {} ({}): {}", symbol, market, e);
+                eprintln!(
+                    "Warning: failed to fetch quote for {} ({}): {}",
+                    symbol, market, e
+                );
                 let is_cookie_err = is_xueqiu_cookie_expired_error(&e);
                 let is_api_err = is_xueqiu_request_error(&e);
                 if is_cookie_err {
@@ -1324,10 +1383,10 @@ pub fn to_yahoo_symbol(symbol: &str, market: &str) -> String {
         "CN" => {
             // CN symbols are stored as e.g. "sh600519" or "sz000858"
             let s = symbol.to_lowercase();
-            if s.starts_with("sh") {
-                format!("{}.SS", &s[2..])
-            } else if s.starts_with("sz") {
-                format!("{}.SZ", &s[2..])
+            if let Some(stripped) = s.strip_prefix("sh") {
+                format!("{}.SS", stripped)
+            } else if let Some(stripped) = s.strip_prefix("sz") {
+                format!("{}.SZ", stripped)
             } else {
                 // Fallback: guess based on first digit
                 let code = s.trim_start_matches(|c: char| !c.is_ascii_digit());
@@ -1372,7 +1431,12 @@ pub async fn fetch_stock_history_yahoo(
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("fetch_stock_history_yahoo: network error for {}: {}", yahoo_sym, e))?;
+        .map_err(|e| {
+            format!(
+                "fetch_stock_history_yahoo: network error for {}: {}",
+                yahoo_sym, e
+            )
+        })?;
 
     if !resp.status().is_success() {
         return Err(format!(
@@ -1382,10 +1446,12 @@ pub async fn fetch_stock_history_yahoo(
         ));
     }
 
-    let json: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("fetch_stock_history_yahoo: parse error for {}: {}", yahoo_sym, e))?;
+    let json: serde_json::Value = resp.json().await.map_err(|e| {
+        format!(
+            "fetch_stock_history_yahoo: parse error for {}: {}",
+            yahoo_sym, e
+        )
+    })?;
 
     let timestamps = json["chart"]["result"][0]["timestamp"]
         .as_array()
@@ -1419,7 +1485,12 @@ pub async fn fetch_stock_history_eastmoney(
         "HK" => to_eastmoney_hk_secid(symbol)?,
         "US" => to_eastmoney_us_secid(symbol),
         "CN" => to_eastmoney_secid(&symbol.to_lowercase())?,
-        _ => return Err(format!("Unsupported market '{}' for East Money history", market)),
+        _ => {
+            return Err(format!(
+                "Unsupported market '{}' for East Money history",
+                market
+            ))
+        }
     };
 
     let beg = start_date.format("%Y%m%d").to_string();
@@ -1440,13 +1511,19 @@ pub async fn fetch_stock_history_eastmoney(
         ));
     }
 
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| format!("fetch_stock_history_eastmoney: read error for {}: {}", symbol, e))?;
+    let body = resp.text().await.map_err(|e| {
+        format!(
+            "fetch_stock_history_eastmoney: read error for {}: {}",
+            symbol, e
+        )
+    })?;
 
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("fetch_stock_history_eastmoney: parse error for {}: {}", symbol, e))?;
+    let json: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        format!(
+            "fetch_stock_history_eastmoney: parse error for {}: {}",
+            symbol, e
+        )
+    })?;
 
     // East Money kline response: data.klines is an array of CSV strings
     // Each line: "date,open,close,high,low,volume,amount,amplitude,change_pct,change_amt,turnover"
@@ -1526,10 +1603,12 @@ pub async fn fetch_stock_history_xueqiu(
         ));
     }
 
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("fetch_stock_history_xueqiu: read error for {}: {}", symbol, e))?;
+    let body = response.text().await.map_err(|e| {
+        format!(
+            "fetch_stock_history_xueqiu: read error for {}: {}",
+            symbol, e
+        )
+    })?;
 
     let resp: XueqiuKlineResponse = serde_json::from_str(&body).map_err(|e| {
         let preview: String = body.chars().take(XUEQIU_RESPONSE_PREVIEW_LEN).collect();
@@ -1573,15 +1652,12 @@ pub async fn fetch_stock_history_xueqiu(
                 symbol, columns
             )
         })?;
-    let close_idx = columns
-        .iter()
-        .position(|c| c == "close")
-        .ok_or_else(|| {
-            format!(
-                "fetch_stock_history_xueqiu: missing 'close' column for {}, got columns: {:?}",
-                symbol, columns
-            )
-        })?;
+    let close_idx = columns.iter().position(|c| c == "close").ok_or_else(|| {
+        format!(
+            "fetch_stock_history_xueqiu: missing 'close' column for {}, got columns: {:?}",
+            symbol, columns
+        )
+    })?;
 
     let items = data.item.unwrap_or_default();
     let mut result: Vec<(chrono::NaiveDate, f64)> = Vec::new();
@@ -1636,57 +1712,55 @@ pub async fn fetch_stock_history(
     provider: &str,
 ) -> Result<Vec<(chrono::NaiveDate, f64)>, String> {
     match provider {
-        "xueqiu" => {
-            match fetch_stock_history_xueqiu(symbol, market, start_date, end_date).await {
-                Ok(prices) if !prices.is_empty() => Ok(prices),
-                Ok(_empty) => {
-                    eprintln!(
+        "xueqiu" => match fetch_stock_history_xueqiu(symbol, market, start_date, end_date).await {
+            Ok(prices) if !prices.is_empty() => Ok(prices),
+            Ok(_empty) => {
+                eprintln!(
                         "fetch_stock_history: Xueqiu returned empty history for {} ({}), falling back to eastmoney",
                         symbol, market
                     );
-                    match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
-                        Ok(prices) if !prices.is_empty() => Ok(prices),
-                        Ok(_empty) => {
-                            eprintln!(
+                match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
+                    Ok(prices) if !prices.is_empty() => Ok(prices),
+                    Ok(_empty) => {
+                        eprintln!(
                                 "fetch_stock_history: EastMoney also returned empty history for {} ({}), falling back to yahoo",
                                 symbol, market
                             );
-                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
-                        }
-                        Err(e) => {
-                            eprintln!(
+                        fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                    }
+                    Err(e) => {
+                        eprintln!(
                                 "fetch_stock_history: EastMoney fallback also failed for {} ({}): {}, falling back to yahoo",
                                 symbol, market, e
                             );
-                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "fetch_stock_history: Xueqiu history failed for {} ({}): {}, falling back to eastmoney",
-                        symbol, market, e
-                    );
-                    match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
-                        Ok(prices) if !prices.is_empty() => Ok(prices),
-                        Ok(_empty) => {
-                            eprintln!(
-                                "fetch_stock_history: EastMoney also returned empty history for {} ({}), falling back to yahoo",
-                                symbol, market
-                            );
-                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
-                        }
-                        Err(e2) => {
-                            eprintln!(
-                                "fetch_stock_history: EastMoney fallback also failed for {} ({}): {}, falling back to yahoo",
-                                symbol, market, e2
-                            );
-                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
-                        }
+                        fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
                     }
                 }
             }
-        }
+            Err(e) => {
+                eprintln!(
+                        "fetch_stock_history: Xueqiu history failed for {} ({}): {}, falling back to eastmoney",
+                        symbol, market, e
+                    );
+                match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
+                    Ok(prices) if !prices.is_empty() => Ok(prices),
+                    Ok(_empty) => {
+                        eprintln!(
+                                "fetch_stock_history: EastMoney also returned empty history for {} ({}), falling back to yahoo",
+                                symbol, market
+                            );
+                        fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                    }
+                    Err(e2) => {
+                        eprintln!(
+                                "fetch_stock_history: EastMoney fallback also failed for {} ({}): {}, falling back to yahoo",
+                                symbol, market, e2
+                            );
+                        fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                    }
+                }
+            }
+        },
         "eastmoney" => {
             match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
                 Ok(prices) if !prices.is_empty() => Ok(prices),
@@ -1715,6 +1789,7 @@ mod tests {
     use super::*;
 
     // Helper: build a synthetic East Money JSON response.
+    #[allow(clippy::too_many_arguments)]
     fn make_eastmoney_response(
         name: &str,
         current: f64,
@@ -1768,9 +1843,7 @@ mod tests {
 
     #[test]
     fn test_parse_eastmoney_quote_no_data() {
-        let resp = EastMoneyResponse {
-            data: None,
-        };
+        let resp = EastMoneyResponse { data: None };
         let result = parse_eastmoney_quote("sh999999", "CN", resp);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("No data from East Money"));
@@ -1908,16 +1981,8 @@ mod tests {
 
     #[test]
     fn test_parse_eastmoney_quote_us_market() {
-        let resp = make_eastmoney_response(
-            "苹果",
-            195.50,
-            193.00,
-            197.00,
-            192.00,
-            50000.0,
-            2.50,
-            1.30,
-        );
+        let resp =
+            make_eastmoney_response("苹果", 195.50, 193.00, 197.00, 192.00, 50000.0, 2.50, 1.30);
         let result = parse_eastmoney_quote("AAPL", "US", resp);
         assert!(result.is_ok());
         let quote = result.unwrap();
@@ -2201,7 +2266,14 @@ mod tests {
             ("$CASH-HKD".to_string(), "HK".to_string()),
         ];
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let quotes = rt.block_on(fetch_quotes_batch_with_providers(symbols, "eastmoney", "eastmoney", "eastmoney")).unwrap();
+        let quotes = rt
+            .block_on(fetch_quotes_batch_with_providers(
+                symbols,
+                "eastmoney",
+                "eastmoney",
+                "eastmoney",
+            ))
+            .unwrap();
         // Should only return 3 unique quotes, not 5
         assert_eq!(quotes.len(), 3);
         let syms: Vec<&str> = quotes.iter().map(|q| q.symbol.as_str()).collect();
@@ -2221,9 +2293,16 @@ mod tests {
             ("$CASH-CNY".to_string(), "CN".to_string()), // duplicate
         ];
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let quotes = rt.block_on(fetch_quotes_batch_cached_with_providers(
-            &cache, symbols, "eastmoney", "eastmoney", "eastmoney", false,
-        )).unwrap();
+        let quotes = rt
+            .block_on(fetch_quotes_batch_cached_with_providers(
+                &cache,
+                symbols,
+                "eastmoney",
+                "eastmoney",
+                "eastmoney",
+                false,
+            ))
+            .unwrap();
         // Should only return 2 unique quotes, not 4
         assert_eq!(quotes.len(), 2);
     }
@@ -2269,17 +2348,31 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
 
         // With force_refresh=false, should return cached data
-        let quotes = rt.block_on(fetch_quotes_batch_cached_with_providers(
-            &cache, symbols.clone(), "eastmoney", "eastmoney", "eastmoney", false,
-        )).unwrap();
+        let quotes = rt
+            .block_on(fetch_quotes_batch_cached_with_providers(
+                &cache,
+                symbols.clone(),
+                "eastmoney",
+                "eastmoney",
+                "eastmoney",
+                false,
+            ))
+            .unwrap();
         assert_eq!(quotes.len(), 1);
         // Cached quote has price 100.0 (from sample_quote)
         assert!((quotes[0].current_price - 100.0).abs() < 0.001);
 
         // With force_refresh=true, should fetch fresh data (cash quote has price 1.0)
-        let quotes = rt.block_on(fetch_quotes_batch_cached_with_providers(
-            &cache, symbols, "eastmoney", "eastmoney", "eastmoney", true,
-        )).unwrap();
+        let quotes = rt
+            .block_on(fetch_quotes_batch_cached_with_providers(
+                &cache,
+                symbols,
+                "eastmoney",
+                "eastmoney",
+                "eastmoney",
+                true,
+            ))
+            .unwrap();
         assert_eq!(quotes.len(), 1);
         assert!((quotes[0].current_price - 1.0).abs() < 0.001);
     }
@@ -2353,7 +2446,8 @@ mod tests {
             ("$CASH-CNY".to_string(), "CN".to_string()),
             ("$CASH-HKD".to_string(), "HK".to_string()),
         ];
-        let result = fetch_quotes_batch_with_providers(symbols, "yahoo", "yahoo", "eastmoney").await;
+        let result =
+            fetch_quotes_batch_with_providers(symbols, "yahoo", "yahoo", "eastmoney").await;
         assert!(result.is_ok());
         let quotes = result.unwrap();
         assert_eq!(quotes.len(), 3);
@@ -2376,7 +2470,10 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.symbol, "sh600519");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ CN quote (East Money): {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ CN quote (East Money): {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ CN quote failed (network issue in CI): {}", e);
@@ -2391,7 +2488,10 @@ mod tests {
         match &result {
             Ok(quote) => {
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ US quote (Yahoo): {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ US quote (Yahoo): {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ US quote failed (network issue in CI): {}", e);
@@ -2409,7 +2509,10 @@ mod tests {
                 assert_eq!(quote.symbol, "sh600519");
                 assert_eq!(quote.market, "CN");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ East Money quote: {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ East Money quote: {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ East Money quote failed (network issue in CI): {}", e);
@@ -2425,7 +2528,10 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "US");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ US quote (East Money): {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ US quote (East Money): {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ US East Money quote failed (network issue in CI): {}", e);
@@ -2441,7 +2547,10 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "HK");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ HK quote (East Money): {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ HK quote (East Money): {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ HK East Money quote failed (network issue in CI): {}", e);
@@ -2491,7 +2600,10 @@ mod tests {
         }"#;
 
         let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
-        let klines = json["data"]["klines"].as_array().cloned().unwrap_or_default();
+        let klines = json["data"]["klines"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
 
         let mut result: Vec<(chrono::NaiveDate, f64)> = Vec::new();
         for kline in &klines {
@@ -2529,7 +2641,10 @@ mod tests {
     fn test_parse_eastmoney_kline_empty() {
         let json_str = r#"{"rc": 0, "data": {"code": "00700", "klines": []}}"#;
         let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
-        let klines = json["data"]["klines"].as_array().cloned().unwrap_or_default();
+        let klines = json["data"]["klines"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(klines.is_empty());
     }
 
@@ -2537,7 +2652,10 @@ mod tests {
     fn test_parse_eastmoney_kline_null_data() {
         let json_str = r#"{"rc": 0, "data": null}"#;
         let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
-        let klines = json["data"]["klines"].as_array().cloned().unwrap_or_default();
+        let klines = json["data"]["klines"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(klines.is_empty());
     }
 
@@ -2589,6 +2707,7 @@ mod tests {
 
     // ---- Xueqiu response parsing tests ----
 
+    #[allow(clippy::too_many_arguments)]
     fn make_xueqiu_response(
         _symbol: &str,
         name: &str,
@@ -2649,15 +2768,7 @@ mod tests {
     #[test]
     fn test_parse_xueqiu_quote_valid_us() {
         let resp = make_xueqiu_response(
-            "AAPL",
-            "苹果",
-            195.50,
-            193.00,
-            197.00,
-            192.00,
-            50000.0,
-            2.50,
-            1.30,
+            "AAPL", "苹果", 195.50, 193.00, 197.00, 192.00, 50000.0, 2.50, 1.30,
         );
         let result = parse_xueqiu_quote("AAPL", "US", resp);
         assert!(result.is_ok());
@@ -2896,7 +3007,10 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.symbol, "sh600519");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ CN quote (Xueqiu): {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ CN quote (Xueqiu): {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ CN Xueqiu quote failed (network issue in CI): {}", e);
@@ -2912,7 +3026,10 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "US");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ US quote (Xueqiu): {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ US quote (Xueqiu): {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ US Xueqiu quote failed (network issue in CI): {}", e);
@@ -2928,7 +3045,10 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "HK");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!("✅ HK quote (Xueqiu): {} = {}", quote.name, quote.current_price);
+                println!(
+                    "✅ HK quote (Xueqiu): {} = {}",
+                    quote.name, quote.current_price
+                );
             }
             Err(e) => {
                 println!("⚠️ HK Xueqiu quote failed (network issue in CI): {}", e);
@@ -2947,9 +3067,7 @@ mod tests {
     ) -> Result<Vec<(chrono::NaiveDate, f64)>, String> {
         let resp: XueqiuKlineResponse =
             serde_json::from_str(body).map_err(|e| format!("parse error: {}", e))?;
-        let data = resp
-            .data
-            .ok_or_else(|| "no data".to_string())?;
+        let data = resp.data.ok_or_else(|| "no data".to_string())?;
         let columns = data.column.unwrap_or_default();
         if columns.is_empty() {
             return Err("empty or missing 'column' field".to_string());
@@ -3055,7 +3173,10 @@ mod tests {
         let start = chrono::NaiveDate::from_ymd_opt(2024, 8, 1).unwrap();
         let end = chrono::NaiveDate::from_ymd_opt(2024, 8, 31).unwrap();
         let result = parse_xueqiu_kline_body(body, start, end);
-        assert!(result.is_err(), "Should error when expected columns are missing");
+        assert!(
+            result.is_err(),
+            "Should error when expected columns are missing"
+        );
     }
 
     /// Test with the exact JSON structure returned by the live Xueqiu API,
@@ -3123,7 +3244,10 @@ mod tests {
         let start = chrono::NaiveDate::from_ymd_opt(2024, 8, 1).unwrap();
         let end = chrono::NaiveDate::from_ymd_opt(2024, 8, 31).unwrap();
         let result = parse_xueqiu_kline_body(body, start, end);
-        assert!(result.is_err(), "Response without column field should be an error");
+        assert!(
+            result.is_err(),
+            "Response without column field should be an error"
+        );
         let err = result.unwrap_err();
         assert!(
             err.contains("empty or missing"),

@@ -90,14 +90,15 @@ pub async fn build_portfolio_context(
     quote_cache: &QuoteCache,
 ) -> Result<String, String> {
     let details = build_holding_details_pub(db, quote_cache, true).await?;
-    let rates = get_cached_rates(cache, db)
-        .await
-        .unwrap_or_else(|_| crate::models::quote::ExchangeRates {
-            usd_cny: 7.2,
-            usd_hkd: 7.8,
-            cny_hkd: 7.8 / 7.2,
-            updated_at: Utc::now().to_rfc3339(),
-        });
+    let rates =
+        get_cached_rates(cache, db)
+            .await
+            .unwrap_or_else(|_| crate::models::quote::ExchangeRates {
+                usd_cny: 7.2,
+                usd_hkd: 7.8,
+                cny_hkd: 7.8 / 7.2,
+                updated_at: Utc::now().to_rfc3339(),
+            });
 
     // Normalise every holding's market value to USD for cross-currency totals.
     let to_usd = |amount: f64, currency: &str| {
@@ -178,7 +179,13 @@ pub async fn build_portfolio_context(
             for t in &txns {
                 out.push_str(&format!(
                     "| {} | {} | {} | {} | {:.4} | {:.4} | {:.2} |\n",
-                    t.traded_at, t.symbol, t.name, t.transaction_type, t.shares, t.price, t.total_amount
+                    t.traded_at,
+                    t.symbol,
+                    t.name,
+                    t.transaction_type,
+                    t.shares,
+                    t.price,
+                    t.total_amount
                 ));
             }
             out.push('\n');
@@ -190,7 +197,10 @@ pub async fn build_portfolio_context(
     out.push_str("## 绩效指标（近 1 年）\n");
     let end = Utc::now().date_naive();
     let start = end - Duration::days(365);
-    let filter = PerformanceFilter { market: None, account_id: None };
+    let filter = PerformanceFilter {
+        market: None,
+        account_id: None,
+    };
     match performance_service::get_performance_summary(db, start, end, &filter) {
         Ok(p) if p.end_value > 0.0 || !p.return_series.is_empty() => {
             out.push_str(&format!(
@@ -324,7 +334,7 @@ fn load_and_validate_config(db: &Database) -> Result<crate::models::ai_config::A
         return Err("尚未配置 AI 模型，请先到「设置 → AI 配置」中选择模型".to_string());
     }
     // Local Ollama does not need an API key.
-    if cfg.provider.to_ascii_lowercase() != "ollama" && cfg.api_key.trim().is_empty() {
+    if !cfg.provider.eq_ignore_ascii_case("ollama") && cfg.api_key.trim().is_empty() {
         return Err("尚未配置 API Key，请先到「设置 → AI 配置」中填写".to_string());
     }
     Ok(cfg)
@@ -559,7 +569,10 @@ pub async fn generate_title(db: &Database, user_message: &str) -> Result<String,
         req = req.bearer_auth(&cfg.api_key);
     }
 
-    let resp = req.send().await.map_err(|e| format!("标题生成请求失败：{e}"))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("标题生成请求失败：{e}"))?;
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -585,7 +598,9 @@ pub async fn generate_title(db: &Database, user_message: &str) -> Result<String,
     // collapse internal whitespace, and clamp to a reasonable length so a
     // runaway model can't produce a paragraph.
     let cleaned = title
-        .trim_matches(|c: char| c == '"' || c == '\'' || c == '`' || c == '「' || c == '」' || c.is_whitespace())
+        .trim_matches(|c: char| {
+            c == '"' || c == '\'' || c == '`' || c == '「' || c == '」' || c.is_whitespace()
+        })
         .replace(['\n', '\r'], " ")
         .split_whitespace()
         .collect::<Vec<_>>()

@@ -65,7 +65,10 @@ pub fn add_stock_split(
 pub fn delete_stock_split(db: State<'_, Database>, id: i64) -> Result<bool, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let rows = conn
-        .execute("DELETE FROM stock_splits WHERE id = ?1", rusqlite::params![id])
+        .execute(
+            "DELETE FROM stock_splits WHERE id = ?1",
+            rusqlite::params![id],
+        )
         .map_err(|e| e.to_string())?;
     Ok(rows > 0)
 }

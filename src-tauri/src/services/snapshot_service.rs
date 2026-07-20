@@ -1,8 +1,10 @@
 use crate::db::Database;
 use crate::models::{DailyHoldingSnapshot, DailyPortfolioValue};
 use crate::services::exchange_rate_service::ExchangeRateCache;
-use crate::services::quote_service::{fetch_quotes_batch_cached_with_providers, fetch_stock_history, QuoteCache};
 use crate::services::quote_provider_service;
+use crate::services::quote_service::{
+    fetch_quotes_batch_cached_with_providers, fetch_stock_history, QuoteCache,
+};
 use chrono::{Datelike, NaiveDate, Timelike};
 
 /// Number of calendar days to look back before the first missing date when
@@ -73,21 +75,21 @@ pub async fn take_daily_snapshot(
             category_name: Option<String>,
         }
 
-        let rows = stmt.query_map([], |row| {
-            Ok(HoldingRow {
-                account_id: row.get(0)?,
-                symbol: row.get(1)?,
-                market: row.get(2)?,
-                shares: row.get(3)?,
-                avg_cost: row.get(4)?,
-                category_name: row.get(5)?,
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(HoldingRow {
+                    account_id: row.get(0)?,
+                    symbol: row.get(1)?,
+                    market: row.get(2)?,
+                    shares: row.get(3)?,
+                    avg_cost: row.get(4)?,
+                    category_name: row.get(5)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?;
-        let result = rows
-            .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
-        result
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     };
 
     if holdings.is_empty() {
@@ -101,7 +103,15 @@ pub async fn take_daily_snapshot(
         .collect();
     let quotes = {
         let config = quote_provider_service::get_quote_provider_config(db)?;
-        fetch_quotes_batch_cached_with_providers(quote_cache, symbols, &config.us_provider, &config.hk_provider, &config.cn_provider, true).await?
+        fetch_quotes_batch_cached_with_providers(
+            quote_cache,
+            symbols,
+            &config.us_provider,
+            &config.hk_provider,
+            &config.cn_provider,
+            true,
+        )
+        .await?
     };
     let quote_map: std::collections::HashMap<String, f64> = quotes
         .iter()
@@ -288,7 +298,11 @@ pub async fn backfill_snapshots(
     // available.  Before CN/HK market close (≈15:00 UTC+8), today's
     // prices do not exist yet, so we use yesterday.
     let latest_closed = last_closed_market_date();
-    let end_date = if end_date > latest_closed { latest_closed } else { end_date };
+    let end_date = if end_date > latest_closed {
+        latest_closed
+    } else {
+        end_date
+    };
 
     if start_date > end_date {
         return Ok(0);
@@ -329,20 +343,21 @@ pub async fn backfill_snapshots(
             )
             .map_err(|e| e.to_string())?;
 
-        let rows = stmt.query_map(rusqlite::params![start_str], |row| {
-            Ok(HoldingRow {
-                _id: row.get(0)?,
-                account_id: row.get(1)?,
-                symbol: row.get(2)?,
-                _name: row.get(3)?,
-                market: row.get(4)?,
-                shares: row.get(5)?,
-                avg_cost: row.get(6)?,
-                _currency: row.get(7)?,
-                category_name: row.get(8)?,
+        let rows = stmt
+            .query_map(rusqlite::params![start_str], |row| {
+                Ok(HoldingRow {
+                    _id: row.get(0)?,
+                    account_id: row.get(1)?,
+                    symbol: row.get(2)?,
+                    _name: row.get(3)?,
+                    market: row.get(4)?,
+                    shares: row.get(5)?,
+                    avg_cost: row.get(6)?,
+                    _currency: row.get(7)?,
+                    category_name: row.get(8)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?
     };
@@ -418,18 +433,20 @@ pub async fn backfill_snapshots(
         std::collections::HashMap::new();
     for tx in &transactions {
         let key = (tx.account_id.clone(), tx.symbol.clone());
-        let cash_sym = format!("{}{}", crate::services::quote_service::CASH_SYMBOL_PREFIX, tx.currency);
+        let cash_sym = format!(
+            "{}{}",
+            crate::services::quote_service::CASH_SYMBOL_PREFIX,
+            tx.currency
+        );
         let cash_key = (tx.account_id.clone(), cash_sym);
         match tx.transaction_type.as_str() {
             "BUY" => {
                 *total_unwind.entry(key).or_insert(0.0) -= tx.shares;
-                *total_unwind.entry(cash_key).or_insert(0.0) +=
-                    tx.total_amount + tx.commission;
+                *total_unwind.entry(cash_key).or_insert(0.0) += tx.total_amount + tx.commission;
             }
             "SELL" => {
                 *total_unwind.entry(key).or_insert(0.0) += tx.shares;
-                *total_unwind.entry(cash_key).or_insert(0.0) -=
-                    tx.total_amount - tx.commission;
+                *total_unwind.entry(cash_key).or_insert(0.0) -= tx.total_amount - tx.commission;
             }
             _ => {}
         }
@@ -441,9 +458,7 @@ pub async fn backfill_snapshots(
         let start_str = start_date.format("%Y-%m-%d").to_string();
         let end_str = end_date.format("%Y-%m-%d").to_string();
         let mut stmt = conn
-            .prepare(
-                "SELECT date FROM daily_portfolio_values WHERE date BETWEEN ?1 AND ?2",
-            )
+            .prepare("SELECT date FROM daily_portfolio_values WHERE date BETWEEN ?1 AND ?2")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(rusqlite::params![start_str, end_str], |row| {
@@ -496,10 +511,7 @@ pub async fn backfill_snapshots(
     // stocks that were suspended (停牌) around the start of the window.
     // Without this, a stock suspended on the first missing date would have
     // no earlier price to forward-fill from.
-    let fetch_start = missing_dates
-        .first()
-        .copied()
-        .unwrap_or(start_date)
+    let fetch_start = missing_dates.first().copied().unwrap_or(start_date)
         - chrono::Duration::days(SUSPENSION_LOOKBACK_DAYS);
     let fetch_end = missing_dates.last().copied().unwrap_or(end_date);
 
@@ -518,8 +530,7 @@ pub async fn backfill_snapshots(
         // Cash holdings have a constant price of 1.0 – no history fetch needed.
         if crate::services::quote_service::is_cash_symbol(symbol) {
             // Populate every missing date with price = 1.0 so forward-fill works
-            let mut cash_prices =
-                std::collections::HashMap::with_capacity(missing_dates.len());
+            let mut cash_prices = std::collections::HashMap::with_capacity(missing_dates.len());
             for d in &missing_dates {
                 cash_prices.insert(*d, 1.0);
             }
@@ -534,15 +545,7 @@ pub async fn backfill_snapshots(
             _ => config.cn_provider.as_str(),
         };
 
-        match fetch_stock_history(
-            symbol,
-            market,
-            fetch_start,
-            fetch_end,
-            provider,
-        )
-        .await
-        {
+        match fetch_stock_history(symbol, market, fetch_start, fetch_end, provider).await {
             Ok(prices) => {
                 let date_price_map: std::collections::HashMap<NaiveDate, f64> =
                     prices.into_iter().collect();
@@ -680,10 +683,7 @@ pub async fn backfill_snapshots(
                 continue;
             }
             // Look up the pre-resolved closing price for this symbol.
-            let close_price = resolved_prices
-                .get(&holding.symbol)
-                .copied()
-                .unwrap_or(0.0);
+            let close_price = resolved_prices.get(&holding.symbol).copied().unwrap_or(0.0);
 
             if close_price > 0.0 {
                 has_any_price = true;
@@ -873,9 +873,8 @@ mod tests {
     #[test]
     fn test_forward_fill_price_no_earlier_data() {
         let map = std::collections::HashMap::new();
-        let sorted: Vec<(NaiveDate, f64)> = vec![
-            (NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(), 20.0),
-        ];
+        let sorted: Vec<(NaiveDate, f64)> =
+            vec![(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(), 20.0)];
         // Query a date before all available data
         let d = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
         assert_eq!(forward_fill_price(&map, &sorted, &d), None);

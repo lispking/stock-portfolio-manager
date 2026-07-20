@@ -110,7 +110,10 @@ pub fn update_alert(db: &Database, id: &str, is_active: bool) -> Result<PriceAle
 pub fn delete_alert(db: &Database, id: &str) -> Result<bool, String> {
     let conn = db.conn.lock().unwrap();
     let rows = conn
-        .execute("DELETE FROM price_alerts WHERE id = ?1", rusqlite::params![id])
+        .execute(
+            "DELETE FROM price_alerts WHERE id = ?1",
+            rusqlite::params![id],
+        )
         .map_err(|e| e.to_string())?;
     Ok(rows > 0)
 }
@@ -139,32 +142,50 @@ pub fn check_alerts(
             "PRICE_ABOVE" => (
                 price,
                 price > alert.threshold,
-                format!("{} 价格 {:.2} 已超过 {:.2}", alert.name, price, alert.threshold),
+                format!(
+                    "{} 价格 {:.2} 已超过 {:.2}",
+                    alert.name, price, alert.threshold
+                ),
             ),
             "PRICE_BELOW" => (
                 price,
                 price < alert.threshold,
-                format!("{} 价格 {:.2} 已低于 {:.2}", alert.name, price, alert.threshold),
+                format!(
+                    "{} 价格 {:.2} 已低于 {:.2}",
+                    alert.name, price, alert.threshold
+                ),
             ),
             "CHANGE_ABOVE" => (
                 change_pct,
                 change_pct > alert.threshold,
-                format!("{} 涨幅 {:.2}% 已超过 {:.2}%", alert.name, change_pct, alert.threshold),
+                format!(
+                    "{} 涨幅 {:.2}% 已超过 {:.2}%",
+                    alert.name, change_pct, alert.threshold
+                ),
             ),
             "CHANGE_BELOW" => (
                 change_pct,
                 change_pct < alert.threshold,
-                format!("{} 跌幅 {:.2}% 已低于 {:.2}%", alert.name, change_pct, alert.threshold),
+                format!(
+                    "{} 跌幅 {:.2}% 已低于 {:.2}%",
+                    alert.name, change_pct, alert.threshold
+                ),
             ),
             "PNL_ABOVE" => (
                 pnl_pct,
                 pnl_pct > alert.threshold,
-                format!("{} 盈亏 {:.2}% 已超过 {:.2}%", alert.name, pnl_pct, alert.threshold),
+                format!(
+                    "{} 盈亏 {:.2}% 已超过 {:.2}%",
+                    alert.name, pnl_pct, alert.threshold
+                ),
             ),
             "PNL_BELOW" => (
                 pnl_pct,
                 pnl_pct < alert.threshold,
-                format!("{} 盈亏 {:.2}% 已低于 {:.2}%", alert.name, pnl_pct, alert.threshold),
+                format!(
+                    "{} 盈亏 {:.2}% 已低于 {:.2}%",
+                    alert.name, pnl_pct, alert.threshold
+                ),
             ),
             _ => continue,
         };

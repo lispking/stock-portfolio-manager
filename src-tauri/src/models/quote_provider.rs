@@ -37,7 +37,9 @@ pub struct QuoteProviderConfig {
     pub hk_adjust_sell_pay_cost: bool,
 }
 
-fn default_cn_adjust() -> bool { true }
+fn default_cn_adjust() -> bool {
+    true
+}
 
 impl Default for QuoteProviderConfig {
     fn default() -> Self {

@@ -45,7 +45,12 @@ pub fn update_quote_provider_config(
     }
     match config.cn_provider.as_str() {
         "eastmoney" | "xueqiu" => {}
-        _ => return Err(format!("Invalid CN provider ({}). Only 'eastmoney' and 'xueqiu' are supported.", config.cn_provider)),
+        _ => {
+            return Err(format!(
+                "Invalid CN provider ({}). Only 'eastmoney' and 'xueqiu' are supported.",
+                config.cn_provider
+            ))
+        }
     }
 
     let conn = db.conn.lock().unwrap();

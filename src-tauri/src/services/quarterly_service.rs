@@ -548,10 +548,16 @@ pub fn get_quarterly_snapshot_detail(
         // Aggregate Q2 snapshot holdings by uppercase symbol for market values
         let mut q2_agg: HashMap<String, (f64, f64)> = HashMap::new();
         for h in &holdings {
-            if h.symbol.starts_with("$CASH-") { continue; }
+            if h.symbol.starts_with("$CASH-") {
+                continue;
+            }
             let key = h.symbol.to_uppercase();
-            q2_agg.entry(key)
-                .and_modify(|(s, v)| { *s += h.shares; *v += h.market_value; })
+            q2_agg
+                .entry(key)
+                .and_modify(|(s, v)| {
+                    *s += h.shares;
+                    *v += h.market_value;
+                })
                 .or_insert((h.shares, h.market_value));
         }
 
@@ -568,11 +574,25 @@ pub fn get_quarterly_snapshot_detail(
         // Aggregate Q1 holdings by uppercase symbol
         let mut q1_agg: HashMap<String, (f64, f64, String, String, String)> = HashMap::new();
         for h in &prev_holdings {
-            if h.symbol.starts_with("$CASH-") { continue; }
+            if h.symbol.starts_with("$CASH-") {
+                continue;
+            }
             let key = h.symbol.to_uppercase();
-            q1_agg.entry(key)
-                .and_modify(|(s, v, _, _, _)| { *s += h.shares; *v += h.market_value; })
-                .or_insert_with(|| (h.shares, h.market_value, h.name.clone(), h.market.clone(), h.category_name.clone()));
+            q1_agg
+                .entry(key)
+                .and_modify(|(s, v, _, _, _)| {
+                    *s += h.shares;
+                    *v += h.market_value;
+                })
+                .or_insert_with(|| {
+                    (
+                        h.shares,
+                        h.market_value,
+                        h.name.clone(),
+                        h.market.clone(),
+                        h.category_name.clone(),
+                    )
+                });
         }
 
         // Q2 = Q1 + txn_net
@@ -581,7 +601,9 @@ pub fn get_quarterly_snapshot_detail(
             let conn = db.conn.lock().ok()?;
             let mut map: HashMap<String, (String, String, String, String)> = HashMap::new();
             for sym_upper in txn_net.keys() {
-                if q1_agg.contains_key(sym_upper) { continue; }
+                if q1_agg.contains_key(sym_upper) {
+                    continue;
+                }
                 if let Ok((name, market, cat_name, cat_color)) = conn.query_row(
                     "SELECT h.name, h.market,
                             COALESCE(c.name, '未分类'),
@@ -592,7 +614,14 @@ pub fn get_quarterly_snapshot_detail(
                      ORDER BY h.shares DESC
                      LIMIT 1",
                     rusqlite::params![sym_upper],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?)),
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    },
                 ) {
                     map.insert(sym_upper.clone(), (name, market, cat_name, cat_color));
                 }
@@ -602,8 +631,12 @@ pub fn get_quarterly_snapshot_detail(
 
         // Merge all symbols from Q1 and txn_net
         let mut all_syms: HashSet<String> = HashSet::new();
-        for k in q1_agg.keys() { all_syms.insert(k.clone()); }
-        for k in txn_net.keys() { all_syms.insert(k.clone()); }
+        for k in q1_agg.keys() {
+            all_syms.insert(k.clone());
+        }
+        for k in txn_net.keys() {
+            all_syms.insert(k.clone());
+        }
 
         let mut new_holdings = Vec::new();
         let mut closed_holdings = Vec::new();
@@ -618,16 +651,19 @@ pub fn get_quarterly_snapshot_detail(
             let q1_shares = q1.map(|q| q.0).unwrap_or(0.0);
             let q1_value = q1.map(|q| q.1).unwrap_or(0.0);
             let q2_shares = q1_shares + net.0;
-            let q2_value = q2_agg.get(sym_upper).map(|q| q.1).unwrap_or_else(|| q1_value + net.1);
+            let q2_value = q2_agg
+                .get(sym_upper)
+                .map(|q| q.1)
+                .unwrap_or_else(|| q1_value + net.1);
 
             if q2_shares <= 0.0 {
                 // Fully closed in Q2: was in Q1, now zero
-                if q1.is_some() {
+                if let Some(q1_item) = q1 {
                     closed_holdings.push(HoldingChangeItem {
                         symbol: sym_upper.clone(),
-                        name: q1.as_ref().unwrap().2.clone(),
-                        market: q1.as_ref().unwrap().3.clone(),
-                        category_name: q1.as_ref().unwrap().4.clone(),
+                        name: q1_item.2.clone(),
+                        market: q1_item.3.clone(),
+                        category_name: q1_item.4.clone(),
                         q1_shares: Some(q1_shares),
                         q2_shares: None,
                         q1_value: Some(q1_value),
@@ -639,13 +675,16 @@ pub fn get_quarterly_snapshot_detail(
                 continue;
             }
 
-            let name = q1.map(|q| q.2.clone())
+            let name = q1
+                .map(|q| q.2.clone())
                 .or_else(|| new_sym_info.get(sym_upper).map(|i| i.0.clone()))
                 .unwrap_or_else(|| sym_upper.clone());
-            let market = q1.map(|q| q.3.clone())
+            let market = q1
+                .map(|q| q.3.clone())
                 .or_else(|| new_sym_info.get(sym_upper).map(|i| i.1.clone()))
                 .unwrap_or_else(|| "US".to_string());
-            let cat = q1.map(|q| q.4.clone())
+            let cat = q1
+                .map(|q| q.4.clone())
                 .or_else(|| new_sym_info.get(sym_upper).map(|i| i.2.clone()))
                 .unwrap_or_else(|| "未分类".to_string());
 
@@ -659,7 +698,11 @@ pub fn get_quarterly_snapshot_detail(
                 q1_value: if q1.is_some() { Some(q1_value) } else { None },
                 q2_value: Some(q2_value),
                 shares_change: net.0,
-                value_change: if q1.is_some() { q2_value - q1_value } else { q2_value },
+                value_change: if q1.is_some() {
+                    q2_value - q1_value
+                } else {
+                    q2_value
+                },
             };
 
             if q1.is_none() {
@@ -674,9 +717,19 @@ pub fn get_quarterly_snapshot_detail(
         }
 
         // Sort CN → HK → US, then symbol
-        fn market_order(m: &str) -> u8 { match m { "CN" => 1, "HK" => 2, _ => 3 } }
+        fn market_order(m: &str) -> u8 {
+            match m {
+                "CN" => 1,
+                "HK" => 2,
+                _ => 3,
+            }
+        }
         let sort_list = |list: &mut Vec<HoldingChangeItem>| {
-            list.sort_by(|a, b| market_order(&a.market).cmp(&market_order(&b.market)).then_with(|| a.symbol.cmp(&b.symbol)));
+            list.sort_by(|a, b| {
+                market_order(&a.market)
+                    .cmp(&market_order(&b.market))
+                    .then_with(|| a.symbol.cmp(&b.symbol))
+            });
         };
         sort_list(&mut new_holdings);
         sort_list(&mut closed_holdings);
@@ -684,9 +737,19 @@ pub fn get_quarterly_snapshot_detail(
         sort_list(&mut decreased);
         sort_list(&mut unchanged);
 
-        Some(HoldingChanges { new_holdings, closed_holdings, increased, decreased, unchanged })
+        Some(HoldingChanges {
+            new_holdings,
+            closed_holdings,
+            increased,
+            decreased,
+            unchanged,
+        })
     });
-    let previous_quarter = if holding_changes.is_some() { prev_q } else { None };
+    let previous_quarter = if holding_changes.is_some() {
+        prev_q
+    } else {
+        None
+    };
 
     Ok(QuarterlySnapshotDetail {
         snapshot,
@@ -787,17 +850,18 @@ pub async fn refresh_quarterly_snapshot(
         };
 
         // 3b. Read live positions into owned tuples, then map to WorkingHolding.
-        let live_rows: Vec<(
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            f64,
-            f64,
-        )> = {
+        type LiveRow = (
+            String, // account_id
+            String, // account_name
+            String, // symbol
+            String, // name
+            String, // market
+            String, // category_name
+            String, // category_color
+            f64,    // shares
+            f64,    // avg_cost
+        );
+        let live_rows: Vec<LiveRow> = {
             let conn = db.conn.lock().map_err(|e| e.to_string())?;
             let mut stmt = conn
                 .prepare(
@@ -964,12 +1028,9 @@ pub async fn refresh_quarterly_snapshot(
         let rebuilt: Vec<RebuiltHolding> = {
             let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
-            let cn_adjust =
-                quote_provider_service::market_adjusts_sell_pay_cost(&conn, "CN");
-            let us_adjust =
-                quote_provider_service::market_adjusts_sell_pay_cost(&conn, "US");
-            let hk_adjust =
-                quote_provider_service::market_adjusts_sell_pay_cost(&conn, "HK");
+            let cn_adjust = quote_provider_service::market_adjusts_sell_pay_cost(&conn, "CN");
+            let us_adjust = quote_provider_service::market_adjusts_sell_pay_cost(&conn, "US");
+            let hk_adjust = quote_provider_service::market_adjusts_sell_pay_cost(&conn, "HK");
 
             let mut results: Vec<RebuiltHolding> = Vec::new();
 
@@ -991,15 +1052,22 @@ pub async fn refresh_quarterly_snapshot(
                          LEFT JOIN categories c ON h.category_id = c.id
                          WHERE h.account_id = ?1 AND UPPER(h.symbol) = UPPER(?2)",
                         rusqlite::params![acct_id, sym],
-                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                        |row| {
+                            Ok((
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                            ))
+                        },
                     )
                     .ok();
 
-                let (name, market, acct_name, cat_name, cat_color) =
-                    match holding_info {
-                        Some(h) => h,
-                        None => continue,
-                    };
+                let (name, market, acct_name, cat_name, cat_color) = match holding_info {
+                    Some(h) => h,
+                    None => continue,
+                };
 
                 let adjust = match market.as_str() {
                     "CN" => cn_adjust,
@@ -1028,18 +1096,15 @@ pub async fn refresh_quarterly_snapshot(
                 }
 
                 let txs: Vec<TxRow> = tx_stmt
-                    .query_map(
-                        rusqlite::params![acct_id, sym, end_date_str],
-                        |row| {
-                            Ok(TxRow {
-                                tx_type: row.get(0)?,
-                                shares: row.get(1)?,
-                                price: row.get(2)?,
-                                total_amount: row.get(3)?,
-                                commission: row.get(4)?,
-                            })
-                        },
-                    )
+                    .query_map(rusqlite::params![acct_id, sym, end_date_str], |row| {
+                        Ok(TxRow {
+                            tx_type: row.get(0)?,
+                            shares: row.get(1)?,
+                            price: row.get(2)?,
+                            total_amount: row.get(3)?,
+                            commission: row.get(4)?,
+                        })
+                    })
                     .map_err(|e| e.to_string())?
                     .collect::<Result<_, _>>()
                     .map_err(|e: rusqlite::Error| e.to_string())?;
@@ -1055,10 +1120,9 @@ pub async fn refresh_quarterly_snapshot(
                         "BUY" => {
                             let total = shares + tx.shares;
                             if total > 0.0 {
-                                avg_cost = (shares * avg_cost
-                                    + tx.shares * tx.price
-                                    + tx.commission)
-                                    / total;
+                                avg_cost =
+                                    (shares * avg_cost + tx.shares * tx.price + tx.commission)
+                                        / total;
                             }
                             shares = total;
                         }
@@ -1066,8 +1130,7 @@ pub async fn refresh_quarterly_snapshot(
                             let remaining = shares - tx.shares;
                             if adjust {
                                 avg_cost = if remaining > 0.0 {
-                                    (shares * avg_cost - tx.total_amount
-                                        + tx.commission)
+                                    (shares * avg_cost - tx.total_amount + tx.commission)
                                         / remaining
                                 } else {
                                     0.0
@@ -1075,12 +1138,9 @@ pub async fn refresh_quarterly_snapshot(
                             }
                             shares = remaining;
                         }
-                        "PAY" => {
-                            if adjust && shares > 0.0 {
-                                let net = tx.total_amount - tx.commission;
-                                avg_cost =
-                                    (shares * avg_cost - net) / shares;
-                            }
+                        "PAY" if adjust && shares > 0.0 => {
+                            let net = tx.total_amount - tx.commission;
+                            avg_cost = (shares * avg_cost - net) / shares;
                         }
                         _ => {}
                     }
@@ -1191,27 +1251,14 @@ pub async fn refresh_quarterly_snapshot(
                 "HK" => &config.hk_provider,
                 _ => "yahoo",
             };
-            match fetch_stock_history(
-                symbol,
-                _market,
-                lookback_start,
-                fetch_end,
-                provider,
-            )
-            .await
+            if let Ok(hist) =
+                fetch_stock_history(symbol, _market, lookback_start, fetch_end, provider).await
             {
-                Ok(hist) => {
-                    if let Some((_date, price)) = hist
-                        .into_iter()
-                        .filter(|(d, _)| *d <= end_date)
-                        .last()
-                    {
-                        if price > 0.0 {
-                            pm.insert(symbol.clone(), price);
-                        }
+                if let Some((_date, price)) = hist.into_iter().rfind(|(d, _)| *d <= end_date) {
+                    if price > 0.0 {
+                        pm.insert(symbol.clone(), price);
                     }
                 }
-                Err(_) => {}
             }
         }
 
@@ -1374,7 +1421,13 @@ pub async fn refresh_quarterly_snapshot(
             {
                 let computed_symbols: HashSet<String> = computed
                     .iter()
-                    .map(|c| format!("{}|{}", c.holding.account_id, c.holding.symbol.to_uppercase()))
+                    .map(|c| {
+                        format!(
+                            "{}|{}",
+                            c.holding.account_id,
+                            c.holding.symbol.to_uppercase()
+                        )
+                    })
                     .collect();
                 // Read existing rows for this snapshot
                 let mut stmt = tx
@@ -1842,7 +1895,7 @@ fn compute_holding_changes(
     // Aggregate by symbol: sum shares and values across accounts.
     // Skip cash pseudo-symbols ($CASH-USD etc.).
     struct Agg {
-        symbol: String,  // original-case symbol for display
+        symbol: String, // original-case symbol for display
         name: String,
         market: String,
         category_name: String,
@@ -1945,7 +1998,11 @@ fn compute_holding_changes(
 
     // Sort each list: CN → HK → US, then symbol ascending
     fn market_order(m: &str) -> u8 {
-        match m { "CN" => 1, "HK" => 2, _ => 3 }
+        match m {
+            "CN" => 1,
+            "HK" => 2,
+            _ => 3,
+        }
     }
     let sort_list = |list: &mut Vec<HoldingChangeItem>| {
         list.sort_by(|a, b| {

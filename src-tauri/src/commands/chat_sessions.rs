@@ -122,8 +122,11 @@ pub fn delete_chat_session(db: State<Database>, id: String) -> Result<(), String
     // Messages are removed automatically via the ON DELETE CASCADE foreign key
     // declared on chat_messages.session_id (PRAGMA foreign_keys = ON is set at
     // startup). A single DELETE on the session is sufficient.
-    conn.execute("DELETE FROM chat_sessions WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM chat_sessions WHERE id = ?1",
+        rusqlite::params![id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

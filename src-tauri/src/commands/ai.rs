@@ -21,10 +21,7 @@ pub async fn get_default_system_prompt() -> Result<String, String> {
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn update_ai_config(
-    db: State<'_, Database>,
-    config: AiConfig,
-) -> Result<bool, String> {
+pub async fn update_ai_config(db: State<'_, Database>, config: AiConfig) -> Result<bool, String> {
     ai_config_service::update_ai_config(&db, &config)
 }
 

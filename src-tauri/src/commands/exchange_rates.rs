@@ -22,5 +22,10 @@ pub async fn convert_amount(
     db: State<'_, Database>,
 ) -> Result<f64, String> {
     let rates = get_cached_rates(&cache, &db).await?;
-    Ok(convert_currency(amount, &from_currency, &to_currency, &rates))
+    Ok(convert_currency(
+        amount,
+        &from_currency,
+        &to_currency,
+        &rates,
+    ))
 }

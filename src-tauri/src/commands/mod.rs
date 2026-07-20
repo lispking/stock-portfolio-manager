@@ -14,6 +14,7 @@ pub mod performance;
 pub mod quarterly;
 pub mod quote_provider;
 pub mod quotes;
+pub mod reset;
 pub mod review;
 pub mod snapshots;
 pub mod statistics;

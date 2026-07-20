@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::db::Database;
 
@@ -91,7 +92,10 @@ mod tests {
             "INSERT INTO accounts (id, name, market, created_at, updated_at) VALUES ('a1', 'Test', 'INVALID', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
             [],
         );
-        assert!(result.is_err(), "Should fail due to CHECK constraint on market");
+        assert!(
+            result.is_err(),
+            "Should fail due to CHECK constraint on market"
+        );
     }
 
     #[test]
@@ -190,7 +194,8 @@ mod tests {
     #[test]
     fn test_quote_provider_config_default() {
         let db = create_test_db();
-        let config = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
+        let config =
+            crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
         assert_eq!(config.us_provider, "xueqiu");
         assert_eq!(config.hk_provider, "xueqiu");
         assert_eq!(config.cn_provider, "xueqiu");
@@ -207,10 +212,12 @@ mod tests {
             xueqiu_u: None,
             ..Default::default()
         };
-        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        let result =
+            crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_ok());
 
-        let loaded = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
+        let loaded =
+            crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
         assert_eq!(loaded.us_provider, "yahoo");
         assert_eq!(loaded.hk_provider, "yahoo");
         assert_eq!(loaded.cn_provider, "eastmoney");
@@ -227,7 +234,8 @@ mod tests {
             xueqiu_u: None,
             ..Default::default()
         };
-        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        let result =
+            crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_err());
     }
 
@@ -242,7 +250,8 @@ mod tests {
             xueqiu_u: None,
             ..Default::default()
         };
-        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        let result =
+            crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_err());
     }
 
@@ -257,10 +266,12 @@ mod tests {
             xueqiu_u: None,
             ..Default::default()
         };
-        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        let result =
+            crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_ok());
 
-        let loaded = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
+        let loaded =
+            crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
         assert_eq!(loaded.xueqiu_cookie, Some("xq_a_token=abc123".to_string()));
     }
 
@@ -275,10 +286,12 @@ mod tests {
             xueqiu_u: Some("9095890697".to_string()),
             ..Default::default()
         };
-        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        let result =
+            crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_ok());
 
-        let loaded = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
+        let loaded =
+            crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
         assert_eq!(loaded.xueqiu_u, Some("9095890697".to_string()));
     }
 
@@ -293,10 +306,12 @@ mod tests {
             xueqiu_u: Some("   ".to_string()),
             ..Default::default()
         };
-        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        let result =
+            crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_ok());
 
-        let loaded = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
+        let loaded =
+            crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
         assert_eq!(loaded.xueqiu_u, None);
     }
 
@@ -414,7 +429,12 @@ mod tests {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Helper: create an account and a holding, returning (account_id, holding_id).
-    fn setup_account_and_holding(conn: &rusqlite::Connection, symbol: &str, shares: f64, avg_cost: f64) -> (String, String) {
+    fn setup_account_and_holding(
+        conn: &rusqlite::Connection,
+        symbol: &str,
+        shares: f64,
+        avg_cost: f64,
+    ) -> (String, String) {
         let acct_id = uuid::Uuid::new_v4().to_string();
         let holding_id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
@@ -440,7 +460,8 @@ mod tests {
         shares: f64,
         price: f64,
     ) -> Result<(f64, f64), String> {
-        conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| e.to_string())?;
 
         let result = (|| -> Result<(f64, f64), String> {
             let holding_id: Option<String> = conn
@@ -504,7 +525,9 @@ mod tests {
 
         match &result {
             Ok(_) => conn.execute_batch("COMMIT").map_err(|e| e.to_string())?,
-            Err(_) => { let _ = conn.execute_batch("ROLLBACK"); }
+            Err(_) => {
+                let _ = conn.execute_batch("ROLLBACK");
+            }
         }
         result
     }
@@ -517,7 +540,8 @@ mod tests {
         let (acct_id, _) = setup_account_and_holding(&conn, "AAPL", 100.0, 10.0);
 
         // Buy 100 more shares at $20
-        let (new_shares, new_avg) = simulate_transaction(&conn, &acct_id, "AAPL", "BUY", 100.0, 20.0).unwrap();
+        let (new_shares, new_avg) =
+            simulate_transaction(&conn, &acct_id, "AAPL", "BUY", 100.0, 20.0).unwrap();
 
         assert!((new_shares - 200.0).abs() < 1e-9);
         // Weighted avg: (100*10 + 100*20) / 200 = 15.0
@@ -532,13 +556,15 @@ mod tests {
         let (acct_id, _) = setup_account_and_holding(&conn, "MSFT", 50.0, 100.0);
 
         // Buy 30 at $120
-        let (shares, avg) = simulate_transaction(&conn, &acct_id, "MSFT", "BUY", 30.0, 120.0).unwrap();
+        let (shares, avg) =
+            simulate_transaction(&conn, &acct_id, "MSFT", "BUY", 30.0, 120.0).unwrap();
         assert!((shares - 80.0).abs() < 1e-9);
         // (50*100 + 30*120) / 80 = (5000 + 3600) / 80 = 107.5
         assert!((avg - 107.5).abs() < 1e-9);
 
         // Buy 20 more at $90
-        let (shares2, avg2) = simulate_transaction(&conn, &acct_id, "MSFT", "BUY", 20.0, 90.0).unwrap();
+        let (shares2, avg2) =
+            simulate_transaction(&conn, &acct_id, "MSFT", "BUY", 20.0, 90.0).unwrap();
         assert!((shares2 - 100.0).abs() < 1e-9);
         // (80*107.5 + 20*90) / 100 = (8600 + 1800) / 100 = 104.0
         assert!((avg2 - 104.0).abs() < 1e-9);
@@ -551,7 +577,8 @@ mod tests {
         let (acct_id, _) = setup_account_and_holding(&conn, "GOOG", 100.0, 150.0);
 
         // Sell 30 shares — avg_cost should remain 150
-        let (new_shares, new_avg) = simulate_transaction(&conn, &acct_id, "GOOG", "SELL", 30.0, 200.0).unwrap();
+        let (new_shares, new_avg) =
+            simulate_transaction(&conn, &acct_id, "GOOG", "SELL", 30.0, 200.0).unwrap();
         assert!((new_shares - 70.0).abs() < 1e-9);
         assert!((new_avg - 150.0).abs() < 1e-9);
     }
@@ -563,7 +590,8 @@ mod tests {
         let (acct_id, _) = setup_account_and_holding(&conn, "TSLA", 50.0, 200.0);
 
         // Sell exactly all shares
-        let (new_shares, new_avg) = simulate_transaction(&conn, &acct_id, "TSLA", "SELL", 50.0, 250.0).unwrap();
+        let (new_shares, new_avg) =
+            simulate_transaction(&conn, &acct_id, "TSLA", "SELL", 50.0, 250.0).unwrap();
         assert!((new_shares - 0.0).abs() < 1e-9);
         assert!((new_avg - 200.0).abs() < 1e-9);
     }
@@ -880,7 +908,13 @@ mod tests {
     /// `total_amount` is gross proceeds (shares_sold × price). Adding `commission`
     /// back effectively subtracts only net proceeds from the cost basis, because
     /// the commission paid is a trading cost that the seller does not receive.
-    fn apply_sell_net_cost(shares: f64, avg_cost: f64, sold: f64, total_amount: f64, commission: f64) -> f64 {
+    fn apply_sell_net_cost(
+        shares: f64,
+        avg_cost: f64,
+        sold: f64,
+        total_amount: f64,
+        commission: f64,
+    ) -> f64 {
         let remaining = shares - sold;
         if remaining > 0.0 {
             (shares * avg_cost - total_amount + commission) / remaining
@@ -894,7 +928,13 @@ mod tests {
     ///   subtracted from the cost basis, and restores the pre-SELL share count.
     ///   rev_avg = (cur_total_cost + net_proceeds) / (cur_shares + sold_shares)
     ///           = (cur_shares × cur_avg_cost + total_amount - commission) / new_shares
-    fn reverse_sell_net_cost(cur_shares: f64, cur_avg_cost: f64, sold: f64, total_amount: f64, commission: f64) -> f64 {
+    fn reverse_sell_net_cost(
+        cur_shares: f64,
+        cur_avg_cost: f64,
+        sold: f64,
+        total_amount: f64,
+        commission: f64,
+    ) -> f64 {
         let new_shares = cur_shares + sold;
         if new_shares > 0.0 {
             (cur_shares * cur_avg_cost + total_amount - commission) / new_shares
@@ -967,8 +1007,12 @@ mod tests {
         let after_shares = shares - sold; // 60
 
         // Reverse the SELL — must recover original avg_cost
-        let recovered_avg = reverse_sell_net_cost(after_shares, after_avg, sold, total_amount, commission);
-        assert!((recovered_avg - avg_cost).abs() < 1e-9, "recovered={recovered_avg}, expected={avg_cost}");
+        let recovered_avg =
+            reverse_sell_net_cost(after_shares, after_avg, sold, total_amount, commission);
+        assert!(
+            (recovered_avg - avg_cost).abs() < 1e-9,
+            "recovered={recovered_avg}, expected={avg_cost}"
+        );
     }
 
     #[test]
@@ -981,7 +1025,8 @@ mod tests {
 
             let after_avg = apply_sell_net_cost(shares, avg_cost, sold, total_amount, commission);
             let after_shares = shares - sold;
-            let recovered = reverse_sell_net_cost(after_shares, after_avg, sold, total_amount, commission);
+            let recovered =
+                reverse_sell_net_cost(after_shares, after_avg, sold, total_amount, commission);
             assert!(
                 (recovered - avg_cost).abs() < 1e-9,
                 "commission={commission}: recovered={recovered}, expected={avg_cost}"

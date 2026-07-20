@@ -1,11 +1,12 @@
+use crate::commands::dashboard::build_holding_details_pub;
 use crate::db::Database;
 use crate::models::{
-    AccountStatistics, CategoryStatistics, MarketStatistics, PieSlice, PnlItem,
-    StatisticsOverview,
+    AccountStatistics, CategoryStatistics, MarketStatistics, PieSlice, PnlItem, StatisticsOverview,
 };
-use crate::services::exchange_rate_service::{convert_currency, get_cached_rates, ExchangeRateCache};
+use crate::services::exchange_rate_service::{
+    convert_currency, get_cached_rates, ExchangeRateCache,
+};
 use crate::services::quote_service::QuoteCache;
-use crate::commands::dashboard::build_holding_details_pub;
 use tauri::State;
 
 fn to_usd_value(amount: f64, currency: &str, rates: &crate::models::ExchangeRates) -> f64 {
@@ -20,19 +21,24 @@ pub async fn get_statistics_overview(
     base_currency: Option<String>,
 ) -> Result<StatisticsOverview, String> {
     let base = base_currency.unwrap_or_else(|| "USD".to_string());
-    let rates = get_cached_rates(&cache, &db).await.unwrap_or_else(|_| crate::models::ExchangeRates {
-        usd_cny: 7.2,
-        usd_hkd: 7.8,
-        cny_hkd: 7.8 / 7.2,
-        updated_at: chrono::Utc::now().to_rfc3339(),
-    });
+    let rates =
+        get_cached_rates(&cache, &db)
+            .await
+            .unwrap_or_else(|_| crate::models::ExchangeRates {
+                usd_cny: 7.2,
+                usd_hkd: 7.8,
+                cny_hkd: 7.8 / 7.2,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            });
 
     let details = build_holding_details_pub(&db, &quote_cache, true).await?;
 
     // Aggregate distribution values in the requested base currency
     let mut market_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
-    let mut category_map: std::collections::HashMap<(String, Option<String>), f64> = std::collections::HashMap::new();
-    let mut account_map: std::collections::HashMap<(String, String), f64> = std::collections::HashMap::new();
+    let mut category_map: std::collections::HashMap<(String, Option<String>), f64> =
+        std::collections::HashMap::new();
+    let mut account_map: std::collections::HashMap<(String, String), f64> =
+        std::collections::HashMap::new();
     let mut stock_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
 
     let mut total_market_value = 0.0f64;
@@ -72,7 +78,11 @@ pub async fn get_statistics_overview(
             color: None,
         })
         .collect();
-    market_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    market_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut category_distribution: Vec<PieSlice> = category_map
         .into_iter()
@@ -82,7 +92,11 @@ pub async fn get_statistics_overview(
             color,
         })
         .collect();
-    category_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    category_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut account_distribution: Vec<PieSlice> = account_map
         .into_iter()
@@ -92,13 +106,25 @@ pub async fn get_statistics_overview(
             color: None,
         })
         .collect();
-    account_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    account_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut stock_distribution: Vec<PieSlice> = stock_map
         .into_iter()
-        .map(|(k, v)| PieSlice { name: k, value: v, color: None })
+        .map(|(k, v)| PieSlice {
+            name: k,
+            value: v,
+            color: None,
+        })
         .collect();
-    stock_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    stock_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Top gainers/losers: aggregate by symbol in base currency so a stock held across
     // multiple accounts/currencies counts as a single entry.
@@ -108,17 +134,20 @@ pub async fn get_statistics_overview(
         cost_base: f64,
         market_value_base: f64,
     }
-    let mut symbol_map: std::collections::HashMap<String, SymbolAgg> = std::collections::HashMap::new();
+    let mut symbol_map: std::collections::HashMap<String, SymbolAgg> =
+        std::collections::HashMap::new();
     for d in &details {
         let pnl_base = convert_currency(d.pnl, &d.currency, &base, &rates);
         let cv_base = convert_currency(d.cost_value, &d.currency, &base, &rates);
         let mv_base = convert_currency(d.market_value, &d.currency, &base, &rates);
-        let entry = symbol_map.entry(d.symbol.clone()).or_insert_with(|| SymbolAgg {
-            name: d.name.clone(),
-            pnl_base: 0.0,
-            cost_base: 0.0,
-            market_value_base: 0.0,
-        });
+        let entry = symbol_map
+            .entry(d.symbol.clone())
+            .or_insert_with(|| SymbolAgg {
+                name: d.name.clone(),
+                pnl_base: 0.0,
+                cost_base: 0.0,
+                market_value_base: 0.0,
+            });
         entry.pnl_base += pnl_base;
         entry.cost_base += cv_base;
         entry.market_value_base += mv_base;
@@ -140,10 +169,25 @@ pub async fn get_statistics_overview(
             }
         })
         .collect();
-    pnl_items.sort_by(|a, b| b.pnl.partial_cmp(&a.pnl).unwrap_or(std::cmp::Ordering::Equal));
+    pnl_items.sort_by(|a, b| {
+        b.pnl
+            .partial_cmp(&a.pnl)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
-    let top_gainers: Vec<PnlItem> = pnl_items.iter().filter(|i| i.pnl > 0.0).take(5).cloned().collect();
-    let top_losers: Vec<PnlItem> = pnl_items.iter().rev().filter(|i| i.pnl < 0.0).take(5).cloned().collect();
+    let top_gainers: Vec<PnlItem> = pnl_items
+        .iter()
+        .filter(|i| i.pnl > 0.0)
+        .take(5)
+        .cloned()
+        .collect();
+    let top_losers: Vec<PnlItem> = pnl_items
+        .iter()
+        .rev()
+        .filter(|i| i.pnl < 0.0)
+        .take(5)
+        .cloned()
+        .collect();
 
     let total_pnl = total_market_value - total_cost;
     let total_pnl_percent = if total_cost != 0.0 {
@@ -180,7 +224,8 @@ pub async fn get_statistics_by_market(
         .collect();
 
     let mut account_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
-    let mut category_map: std::collections::HashMap<(String, Option<String>), f64> = std::collections::HashMap::new();
+    let mut category_map: std::collections::HashMap<(String, Option<String>), f64> =
+        std::collections::HashMap::new();
     let mut stock_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
 
     let mut total_market_value = 0.0f64;
@@ -205,21 +250,45 @@ pub async fn get_statistics_by_market(
 
     let mut account_distribution: Vec<PieSlice> = account_map
         .into_iter()
-        .map(|(k, v)| PieSlice { name: k, value: v, color: None })
+        .map(|(k, v)| PieSlice {
+            name: k,
+            value: v,
+            color: None,
+        })
         .collect();
-    account_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    account_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut category_distribution: Vec<PieSlice> = category_map
         .into_iter()
-        .map(|((name, color), v)| PieSlice { name, value: v, color })
+        .map(|((name, color), v)| PieSlice {
+            name,
+            value: v,
+            color,
+        })
         .collect();
-    category_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    category_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut stock_distribution: Vec<PieSlice> = stock_map
         .into_iter()
-        .map(|(k, v)| PieSlice { name: k, value: v, color: None })
+        .map(|(k, v)| PieSlice {
+            name: k,
+            value: v,
+            color: None,
+        })
         .collect();
-    stock_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    stock_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let total_pnl = total_market_value - total_cost;
     let total_pnl_percent = if total_cost != 0.0 {
@@ -254,10 +323,17 @@ pub async fn get_statistics_by_account(
         .filter(|d| d.account_id == account_id)
         .collect();
 
-    let account_name = details.first().map(|d| d.account_name.clone()).unwrap_or_default();
-    let market = details.first().map(|d| d.market.clone()).unwrap_or_default();
+    let account_name = details
+        .first()
+        .map(|d| d.account_name.clone())
+        .unwrap_or_default();
+    let market = details
+        .first()
+        .map(|d| d.market.clone())
+        .unwrap_or_default();
 
-    let mut category_map: std::collections::HashMap<(String, Option<String>), f64> = std::collections::HashMap::new();
+    let mut category_map: std::collections::HashMap<(String, Option<String>), f64> =
+        std::collections::HashMap::new();
     let mut stock_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
 
     let mut total_market_value = 0.0f64;
@@ -281,15 +357,31 @@ pub async fn get_statistics_by_account(
 
     let mut category_distribution: Vec<PieSlice> = category_map
         .into_iter()
-        .map(|((name, color), v)| PieSlice { name, value: v, color })
+        .map(|((name, color), v)| PieSlice {
+            name,
+            value: v,
+            color,
+        })
         .collect();
-    category_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    category_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut stock_distribution: Vec<PieSlice> = stock_map
         .into_iter()
-        .map(|(k, v)| PieSlice { name: k, value: v, color: None })
+        .map(|(k, v)| PieSlice {
+            name: k,
+            value: v,
+            color: None,
+        })
         .collect();
-    stock_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    stock_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let total_pnl = total_market_value - total_cost;
     let total_pnl_percent = if total_cost != 0.0 {
@@ -321,12 +413,15 @@ pub async fn get_statistics_by_category(
     base_currency: Option<String>,
 ) -> Result<CategoryStatistics, String> {
     let base = base_currency.unwrap_or_else(|| "USD".to_string());
-    let rates = get_cached_rates(&cache, &db).await.unwrap_or_else(|_| crate::models::ExchangeRates {
-        usd_cny: 7.2,
-        usd_hkd: 7.8,
-        cny_hkd: 7.8 / 7.2,
-        updated_at: chrono::Utc::now().to_rfc3339(),
-    });
+    let rates =
+        get_cached_rates(&cache, &db)
+            .await
+            .unwrap_or_else(|_| crate::models::ExchangeRates {
+                usd_cny: 7.2,
+                usd_hkd: 7.8,
+                cny_hkd: 7.8 / 7.2,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            });
 
     // We need to look up holdings by category_id (not name), so query DB directly
     struct CategoryRow {
@@ -340,14 +435,24 @@ pub async fn get_statistics_by_category(
         conn.query_row(
             "SELECT id, name, color FROM categories WHERE id = ?1",
             rusqlite::params![category_id],
-            |row| Ok(CategoryRow { id: row.get(0)?, name: row.get(1)?, color: row.get(2)? }),
+            |row| {
+                Ok(CategoryRow {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    color: row.get(2)?,
+                })
+            },
         )
         .ok()
     };
 
     let (cat_id, cat_name, cat_color) = match cat {
         Some(c) => (c.id, c.name, c.color),
-        None => (category_id.clone(), "未分类".to_string(), "#8B8B8B".to_string()),
+        None => (
+            category_id.clone(),
+            "未分类".to_string(),
+            "#8B8B8B".to_string(),
+        ),
     };
 
     let all_details = build_holding_details_pub(&db, &quote_cache, true).await?;
@@ -385,9 +490,17 @@ pub async fn get_statistics_by_category(
 
     let mut market_distribution: Vec<PieSlice> = market_map
         .into_iter()
-        .map(|(k, v)| PieSlice { name: k, value: v, color: None })
+        .map(|(k, v)| PieSlice {
+            name: k,
+            value: v,
+            color: None,
+        })
         .collect();
-    market_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+    market_distribution.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let total_pnl = total_market_value - total_cost;
     let total_pnl_percent = if total_cost != 0.0 {
