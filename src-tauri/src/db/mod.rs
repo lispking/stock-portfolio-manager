@@ -272,9 +272,41 @@ impl Database {
                 api_key TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL DEFAULT '',
                 base_url TEXT,
-                system_prompt TEXT NOT NULL DEFAULT '你是一位专业的投资顾问，帮助用户分析股票投资组合。',
+                -- The default system prompt lives in
+                -- `models::ai_config::DEFAULT_SYSTEM_PROMPT`; `get_ai_config`
+                -- falls back to it when no row is present.
+                system_prompt TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             );
+        ")?;
+
+        // AI chat sessions & messages. Messages cascade-delete with their
+        // session via the foreign key (FK enforcement is enabled at the top
+        // of this function). Sessions are user-created named conversations;
+        // each session owns a full ordered message history.
+        conn.execute_batch("
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        ")?;
+
+        conn.execute_batch("
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                completion_tokens INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                cached_tokens INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_session
+                ON chat_messages(session_id, created_at);
         ")?;
 
         conn.execute_batch("

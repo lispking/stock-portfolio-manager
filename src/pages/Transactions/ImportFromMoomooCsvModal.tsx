@@ -705,13 +705,13 @@ export default function ImportFromMoomooCsvModal({
             </p>
           </Dragger>
           {parseError && (
-            <Alert type="error" message={parseError} className="mt-3" showIcon />
+            <Alert type="error" title={parseError} className="mt-3" showIcon />
           )}
           <Alert
             type="info"
             className="mt-3"
             showIcon
-            message="仅支持 moomoo（富途）客户端导出的交易记录 CSV"
+            title="仅支持 moomoo（富途）客户端导出的交易记录 CSV"
             description={
               <span>
                 账户市场：<strong>{marketLabel}（{currency}）</strong>
@@ -728,13 +728,13 @@ export default function ImportFromMoomooCsvModal({
           <Alert
             type="info"
             showIcon
-            message={`账户「${account.name}」[${defaultMarket}]，市场和货币已自动识别`}
+            title={`账户「${account.name}」[${defaultMarket}]，市场和货币已自动识别`}
             className="mb-3"
           />
           <Alert
             type="warning"
             showIcon
-            message="请核对以下数据，可直接在表格中编辑。确认后点击「导入选中记录」。"
+            title="请核对以下数据，可直接在表格中编辑。确认后点击「导入选中记录」。"
             className="mb-3"
           />
           <Table
@@ -758,7 +758,7 @@ export default function ImportFromMoomooCsvModal({
             <Alert
               type="success"
               showIcon
-              message={`成功导入 ${importResult.success} 条交易记录`}
+              title={`成功导入 ${importResult.success} 条交易记录`}
               className="mb-3"
             />
           )}
@@ -766,7 +766,7 @@ export default function ImportFromMoomooCsvModal({
             <Alert
               type="error"
               showIcon
-              message={`${importResult.failed} 条导入失败`}
+              title={`${importResult.failed} 条导入失败`}
               description={
                 <ul className="mt-1 pl-4">
                   {importResult.errors.map((e, i) => (

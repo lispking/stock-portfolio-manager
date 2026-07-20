@@ -577,7 +577,7 @@ export default function ImportFromImageModal({
           {parseError && (
             <Alert
               type="error"
-              message={parseError}
+              title={parseError}
               className="mt-3"
               showIcon
             />
@@ -586,7 +586,7 @@ export default function ImportFromImageModal({
             type="info"
             className="mt-3"
             showIcon
-            message="需要系统已安装 Tesseract OCR 及中文语言包"
+            title="需要系统已安装 Tesseract OCR 及中文语言包"
             description={
               <span>
                 macOS: <code>brew install tesseract tesseract-lang</code>
@@ -604,13 +604,13 @@ export default function ImportFromImageModal({
           <Alert
             type="info"
             showIcon
-            message={`账户「${account.name}」[${market}]，市场和货币已自动设置为 ${market} / ${currency}`}
+            title={`账户「${account.name}」[${market}]，市场和货币已自动设置为 ${market} / ${currency}`}
             className="mb-3"
           />
           <Alert
             type="warning"
             showIcon
-            message="请核对以下识别结果，尤其是股票代码。查询不到时可手动填写。"
+            title="请核对以下识别结果，尤其是股票代码。查询不到时可手动填写。"
             className="mb-3"
           />
           <Table
@@ -631,7 +631,7 @@ export default function ImportFromImageModal({
             <Alert
               type="success"
               showIcon
-              message={`成功导入 ${importResult.success} 条交易记录`}
+              title={`成功导入 ${importResult.success} 条交易记录`}
               className="mb-3"
             />
           )}
@@ -639,7 +639,7 @@ export default function ImportFromImageModal({
             <Alert
               type="error"
               showIcon
-              message={`${importResult.failed} 条导入失败`}
+              title={`${importResult.failed} 条导入失败`}
               description={
                 <ul className="mt-1 pl-4">
                   {importResult.errors.map((e, i) => (

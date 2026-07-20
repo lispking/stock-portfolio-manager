@@ -16,6 +16,7 @@ interface AiState {
   fetchConfig: () => Promise<void>;
   updateConfig: (config: AiConfig) => Promise<boolean>;
   fetchModels: (args: FetchModelsArgs) => Promise<AiModelInfo[]>;
+  getDefaultSystemPrompt: () => Promise<string>;
 }
 
 export const useAiStore = create<AiState>((set) => ({
@@ -43,6 +44,10 @@ export const useAiStore = create<AiState>((set) => ({
       set({ error: String(err), loading: false });
       return false;
     }
+  },
+
+  getDefaultSystemPrompt: async () => {
+    return invoke<string>("get_default_system_prompt");
   },
 
   fetchModels: async (args) => {

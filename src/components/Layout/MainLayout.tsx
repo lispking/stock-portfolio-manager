@@ -15,6 +15,7 @@ import {
   HistoryOutlined,
   SettingOutlined,
   FundOutlined,
+  RobotOutlined,
 } from "@ant-design/icons";
 
 const { Sider, Content } = Layout;
@@ -32,6 +33,7 @@ const menuItems = [
   { key: "/import", icon: <ImportOutlined />, label: "导入导出" },
   { key: "/alerts", icon: <BellOutlined />, label: "价格提醒" },
   { key: "/review", icon: <HistoryOutlined />, label: "操作复盘" },
+  { key: "/ai-assistant", icon: <RobotOutlined />, label: "AI 助手" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ];
 
@@ -67,7 +69,19 @@ export default function MainLayout({ children }: Props) {
               location.pathname,
           ]}
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) => {
+            // antd Menu in inline mode occasionally swallows clicks when the
+            // target item is already in `selectedKeys` (which can happen with
+            // our `startsWith` matching). Log + a defensive try/catch helps
+            // diagnose, and falling back to `window.location` guarantees the
+            // navigation actually happens even if the router hook misbehaves.
+            try {
+              navigate(key);
+            } catch (err) {
+              console.error("[MainLayout] navigate failed, falling back to window.location", err);
+              window.location.assign(key);
+            }
+          }}
         />
       </Sider>
       <Layout style={{ height: "100vh", overflow: "hidden" }}>

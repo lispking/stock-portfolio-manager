@@ -653,7 +653,7 @@ export default function ImportFromThsCsvModal({
             type="info"
             showIcon
             className="mb-3"
-            message="如何导出 CSV"
+            title="如何导出 CSV"
             description={
               <Paragraph className="!mb-0" style={{ fontSize: 13 }}>
                 同花顺客户端导出的历史成交文件为 Excel 格式，请先用 WPS 表格、Microsoft
@@ -678,7 +678,7 @@ export default function ImportFromThsCsvModal({
             <p className="ant-upload-hint">支持 UTF-8 及 GB18030 编码，.csv 格式</p>
           </Dragger>
           {parseError && (
-            <Alert type="error" message={parseError} className="mt-3" showIcon />
+            <Alert type="error" title={parseError} className="mt-3" showIcon />
           )}
         </div>
       )}
@@ -706,7 +706,7 @@ export default function ImportFromThsCsvModal({
           {importResult.success > 0 && (
             <Alert
               type="success"
-              message={`成功导入 ${importResult.success} 条记录`}
+              title={`成功导入 ${importResult.success} 条记录`}
               className="mb-3"
               showIcon
             />
@@ -714,7 +714,7 @@ export default function ImportFromThsCsvModal({
           {importResult.failed > 0 && (
             <Alert
               type="error"
-              message={`${importResult.failed} 条记录导入失败`}
+              title={`${importResult.failed} 条记录导入失败`}
               description={
                 <ul className="mt-1">
                   {importResult.errors.map((e, i) => (

@@ -26,6 +26,13 @@ static EASTMONEY_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 /// subsequent API requests.
 static XUEQIU_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
+/// Global HTTP client for AI provider requests (OpenAI-compatible chat APIs).
+///
+/// LLM streaming responses can take minutes to finish, so this client uses a
+/// generous 5-minute timeout (vs the 15s general client). No `User-Agent` is
+/// set because provider APIs (OpenAI / GLM / Kimi / etc.) do not require one.
+static AI_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
 /// Return a shared general-purpose `reqwest::Client`.
 ///
 /// The client is created once on first call and reused for the lifetime of the
@@ -116,6 +123,22 @@ pub fn xueqiu_client() -> &'static reqwest::Client {
             .default_headers(default_headers)
             .build()
             .expect("failed to build Xueqiu HTTP client")
+    })
+}
+
+/// Return a shared `reqwest::Client` for AI provider API requests.
+///
+/// Configured with a 5-minute timeout to accommodate slow streaming chat
+/// completions, and the same connection-pool settings as the other clients.
+pub fn ai_client() -> &'static reqwest::Client {
+    AI_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(300))
+            .pool_max_idle_per_host(5)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .tcp_keepalive(Duration::from_secs(60))
+            .build()
+            .expect("failed to build AI HTTP client")
     })
 }
 

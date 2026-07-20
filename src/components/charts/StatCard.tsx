@@ -28,13 +28,13 @@ export default function StatCard({
     change === undefined ? undefined : pnlColor(change);
 
   return (
-    <Card loading={loading} bodyStyle={{ padding: "16px 20px" }}>
+    <Card loading={loading} styles={{ body: { padding: "16px 20px" } }}>
       <Statistic
         title={title}
         value={value}
         prefix={prefix}
         suffix={suffix}
-        valueStyle={valueStyle}
+        styles={{ content: valueStyle }}
       />
       {change !== undefined && (
         <div style={{ marginTop: 4, color: changeColor, fontSize: 13 }}>

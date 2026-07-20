@@ -197,7 +197,7 @@ export default function GeneralSettings() {
                 key: "login",
                 label: "一键登录",
                 children: (
-                  <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                  <Space orientation="vertical" style={{ width: "100%" }} size="middle">
                     <Space>
                       <Button onClick={handleOpenLoginWindow}>
                         {loginWindowOpen ? "已打开登录窗口，去登录" : "一键登录雪球"}
@@ -250,7 +250,7 @@ export default function GeneralSettings() {
                     <Form.Item
                       extra="浏览器登录 xueqiu.com → F12 → Application → Cookies → 分别复制 xq_a_token 和 u 的值"
                     >
-                      <Space direction="vertical" style={{ width: "100%" }} size="small">
+                      <Space orientation="vertical" style={{ width: "100%" }} size="small">
                         <Input
                           addonBefore="xq_a_token"
                           placeholder="6a7dc04b2c6770dc8e..."

@@ -76,7 +76,7 @@ function HoldingTimeline({
           ),
         children: (
           <Card size="small" style={{ marginBottom: 8 }}>
-            <Space direction="vertical" style={{ width: "100%" }}>
+            <Space orientation="vertical" style={{ width: "100%" }}>
               <Space>
                 <Tag color="blue">{item.quarter}</Tag>
                 <Text>持仓：{item.shares} 股</Text>
@@ -149,14 +149,14 @@ export default function ReviewPage() {
               <Statistic
                 title="正确决策"
                 value={decisionStats.correct_count}
-                valueStyle={{ color: "#52c41a" }}
+                styles={{ content: {  color: "#52c41a"  } }}
               />
             </Col>
             <Col span={6}>
               <Statistic
                 title="错误决策"
                 value={decisionStats.wrong_count}
-                valueStyle={{ color: "#ff4d4f" }}
+                styles={{ content: {  color: "#ff4d4f"  } }}
               />
             </Col>
             <Col span={6}>
@@ -164,9 +164,11 @@ export default function ReviewPage() {
                 title="决策准确率"
                 value={(decisionStats.accuracy_rate * 100).toFixed(1)}
                 suffix="%"
-                valueStyle={{
-                  color:
-                    decisionStats.accuracy_rate >= 0.6 ? "#52c41a" : "#ff4d4f",
+                styles={{
+                  content: {
+                    color:
+                      decisionStats.accuracy_rate >= 0.6 ? "#52c41a" : "#ff4d4f",
+                  },
                 }}
               />
             </Col>

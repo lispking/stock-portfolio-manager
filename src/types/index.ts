@@ -636,12 +636,70 @@ export type AiProvider =
   | "openrouter"
   | "kimi"
   | "glm"
-  | "mimo";
+  | "mimo"
+  | "deepseek";
 
 export interface AiModelInfo {
   id: string;
   name?: string | null;
   owned_by?: string | null;
+}
+
+// AI Assistant chat
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+/** Token-usage accounting for a single chat turn (from the final SSE chunk). */
+export interface ChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** Portion of promptTokens that hit the provider's prompt cache. 0 if N/A. */
+  cachedTokens?: number;
+}
+
+/**
+ * A chat message with client-side metadata for display.
+ * - `createdAt`: epoch millis when the message was added to the UI
+ * - `usage`: token breakdown (assistant messages only, populated when the
+ *   stream's final chunk arrives)
+ * - `stopped`: true if the user aborted this assistant turn mid-stream
+ * - `error`: present when this assistant turn failed (network error, HTTP 4xx,
+ *   etc.). The UI renders the message as an error card with a retry button
+ *   instead of a blank bubble. Not persisted — only lives in memory for the
+ *   current session view.
+ */
+export interface ChatMessageWithMeta {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  createdAt: number;
+  usage?: ChatUsage;
+  stopped?: boolean;
+  error?: string;
+}
+
+/** A persisted AI chat session (one named conversation). */
+export interface ChatSession {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A persisted chat message row (with token-usage accounting). */
+export interface ChatMessageRecord {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cached_tokens: number;
+  created_at: string;
 }
 
 // Quote Provider Config

@@ -3,6 +3,7 @@ pub mod ai;
 pub mod alerts;
 pub mod backup;
 pub mod categories;
+pub mod chat_sessions;
 pub mod dashboard;
 pub mod exchange_rates;
 pub mod holdings;
