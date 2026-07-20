@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { AiConfig } from "../types";
+import type { AiConfig, AiModelInfo } from "../types";
+
+interface FetchModelsArgs {
+  provider: string;
+  api_key?: string;
+  base_url?: string | null;
+}
 
 interface AiState {
   config: AiConfig | null;
@@ -9,6 +15,7 @@ interface AiState {
 
   fetchConfig: () => Promise<void>;
   updateConfig: (config: AiConfig) => Promise<boolean>;
+  fetchModels: (args: FetchModelsArgs) => Promise<AiModelInfo[]>;
 }
 
 export const useAiStore = create<AiState>((set) => ({
@@ -36,5 +43,15 @@ export const useAiStore = create<AiState>((set) => ({
       set({ error: String(err), loading: false });
       return false;
     }
+  },
+
+  fetchModels: async (args) => {
+    return invoke<AiModelInfo[]>("fetch_ai_models", {
+      req: {
+        provider: args.provider,
+        apiKey: args.api_key ?? "",
+        baseUrl: args.base_url ?? null,
+      },
+    });
   },
 }));

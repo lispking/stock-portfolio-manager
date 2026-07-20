@@ -630,6 +630,20 @@ export interface AiConfig {
   system_prompt: string;
 }
 
+export type AiProvider =
+  | "openai"
+  | "ollama"
+  | "openrouter"
+  | "kimi"
+  | "glm"
+  | "mimo";
+
+export interface AiModelInfo {
+  id: string;
+  name?: string | null;
+  owned_by?: string | null;
+}
+
 // Quote Provider Config
 export type QuoteProvider = "yahoo" | "eastmoney" | "xueqiu";
 

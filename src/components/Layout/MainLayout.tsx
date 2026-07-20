@@ -45,7 +45,7 @@ export default function MainLayout({ children }: Props) {
   const location = useLocation();
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout style={{ height: "100vh", overflow: "hidden" }}>
       <Sider
         collapsible
         collapsed={collapsed}
@@ -70,8 +70,11 @@ export default function MainLayout({ children }: Props) {
           onClick={({ key }) => navigate(key)}
         />
       </Sider>
-      <Layout>
-        <Content className="p-6 bg-gray-50" style={{ minHeight: "100vh" }}>
+      <Layout style={{ height: "100vh", overflow: "hidden" }}>
+        <Content
+          className="p-6 bg-gray-50"
+          style={{ height: "100%", overflowY: "auto" }}
+        >
           {children}
         </Content>
       </Layout>

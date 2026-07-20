@@ -270,7 +270,7 @@ impl Database {
                 id INTEGER PRIMARY KEY DEFAULT 1,
                 provider TEXT NOT NULL DEFAULT 'openai',
                 api_key TEXT NOT NULL DEFAULT '',
-                model TEXT NOT NULL DEFAULT 'gpt-4',
+                model TEXT NOT NULL DEFAULT '',
                 base_url TEXT,
                 system_prompt TEXT NOT NULL DEFAULT '你是一位专业的投资顾问，帮助用户分析股票投资组合。',
                 updated_at TEXT NOT NULL

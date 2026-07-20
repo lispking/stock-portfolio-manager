@@ -234,6 +234,7 @@ pub fn run() {
             // Phase 6: AI Config
             commands::ai::get_ai_config,
             commands::ai::update_ai_config,
+            commands::ai::fetch_ai_models,
             // Quote Provider Config
             commands::quote_provider::get_quote_provider_config,
             commands::quote_provider::update_quote_provider_config,
