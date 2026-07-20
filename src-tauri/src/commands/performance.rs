@@ -64,13 +64,9 @@ pub async fn get_benchmark_return_series(
     let start_str = start.format("%Y-%m-%d").to_string();
     let base_price = points
         .iter()
-        .filter(|p| p.date < start_str)
-        .last()
+        .rfind(|p| p.date < start_str)
         .map(|p| p.close_price);
-    let visible: Vec<_> = points
-        .into_iter()
-        .filter(|p| p.date >= start_str)
-        .collect();
+    let visible: Vec<_> = points.into_iter().filter(|p| p.date >= start_str).collect();
     Ok(performance_service::benchmark_to_return_series(
         &visible, base_price,
     ))

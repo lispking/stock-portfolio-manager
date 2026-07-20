@@ -22,7 +22,8 @@ impl Database {
 
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS accounts (
                 id TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
@@ -31,9 +32,11 @@ impl Database {
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS categories (
                 id TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
@@ -43,9 +46,11 @@ impl Database {
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS holdings (
                 id TEXT PRIMARY KEY NOT NULL,
                 account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -59,7 +64,8 @@ impl Database {
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS transactions (
@@ -83,10 +89,38 @@ impl Database {
 
         // Seed system categories (ignore if already exist)
         let categories = [
-            (uuid::Uuid::new_v4().to_string(), "现金类", "#22C55E", "💵", 1, 1),
-            (uuid::Uuid::new_v4().to_string(), "分红股", "#3B82F6", "💰", 1, 2),
-            (uuid::Uuid::new_v4().to_string(), "成长股", "#F97316", "🚀", 1, 3),
-            (uuid::Uuid::new_v4().to_string(), "套利",   "#8B5CF6", "🔄", 1, 4),
+            (
+                uuid::Uuid::new_v4().to_string(),
+                "现金类",
+                "#22C55E",
+                "💵",
+                1,
+                1,
+            ),
+            (
+                uuid::Uuid::new_v4().to_string(),
+                "分红股",
+                "#3B82F6",
+                "💰",
+                1,
+                2,
+            ),
+            (
+                uuid::Uuid::new_v4().to_string(),
+                "成长股",
+                "#F97316",
+                "🚀",
+                1,
+                3,
+            ),
+            (
+                uuid::Uuid::new_v4().to_string(),
+                "套利",
+                "#8B5CF6",
+                "🔄",
+                1,
+                4,
+            ),
         ];
 
         let now = chrono::Utc::now().to_rfc3339();
@@ -99,7 +133,8 @@ impl Database {
             )?;
         }
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS daily_portfolio_values (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL UNIQUE,
@@ -115,9 +150,11 @@ impl Database {
                 daily_pnl REAL NOT NULL DEFAULT 0,
                 cumulative_pnl REAL NOT NULL DEFAULT 0
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS daily_holding_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
@@ -130,14 +167,18 @@ impl Database {
                 close_price REAL NOT NULL DEFAULT 0,
                 market_value REAL NOT NULL DEFAULT 0
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE INDEX IF NOT EXISTS idx_daily_holding_snapshots_date
             ON daily_holding_snapshots(date);
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS benchmark_daily_prices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
@@ -146,14 +187,18 @@ impl Database {
                 change_percent REAL NOT NULL DEFAULT 0,
                 UNIQUE(symbol, date)
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE INDEX IF NOT EXISTS idx_benchmark_daily_prices_symbol_date
             ON benchmark_daily_prices(symbol, date);
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS quarterly_snapshots (
                 id TEXT PRIMARY KEY NOT NULL,
                 quarter TEXT NOT NULL UNIQUE,
@@ -171,7 +216,8 @@ impl Database {
                 overall_notes TEXT,
                 created_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS quarterly_holding_snapshots (
@@ -196,20 +242,26 @@ impl Database {
             );
         ")?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE INDEX IF NOT EXISTS idx_quarterly_holding_snapshots_snapshot_id
             ON quarterly_holding_snapshots(quarterly_snapshot_id);
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE INDEX IF NOT EXISTS idx_quarterly_holding_snapshots_symbol
             ON quarterly_holding_snapshots(symbol);
-        ")?;
+        ",
+        )?;
 
         // Add decision_quality column if not exists (migration)
-        let _ = conn.execute_batch("
+        let _ = conn.execute_batch(
+            "
             ALTER TABLE quarterly_holding_snapshots ADD COLUMN decision_quality TEXT;
-        ");
+        ",
+        );
 
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS price_alerts (
@@ -227,7 +279,8 @@ impl Database {
             );
         ")?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS quote_provider_config (
                 id INTEGER PRIMARY KEY DEFAULT 1,
                 us_provider TEXT NOT NULL DEFAULT 'xueqiu',
@@ -235,17 +288,22 @@ impl Database {
                 cn_provider TEXT NOT NULL DEFAULT 'xueqiu',
                 updated_at TEXT NOT NULL DEFAULT ''
             );
-        ")?;
+        ",
+        )?;
 
         // Add xueqiu_cookie column if not exists (migration)
-        let _ = conn.execute_batch("
+        let _ = conn.execute_batch(
+            "
             ALTER TABLE quote_provider_config ADD COLUMN xueqiu_cookie TEXT;
-        ");
+        ",
+        );
 
         // Add xueqiu_u column if not exists (migration)
-        let _ = conn.execute_batch("
+        let _ = conn.execute_batch(
+            "
             ALTER TABLE quote_provider_config ADD COLUMN xueqiu_u TEXT;
-        ");
+        ",
+        );
         // NOTE: xueqiu_cookie (xq_a_token) and xueqiu_u (user ID) are
         // different values – do NOT copy one into the other.  Users who
         // previously only had xueqiu_cookie set will need to enter their
@@ -265,19 +323,58 @@ impl Database {
             ALTER TABLE quote_provider_config ADD COLUMN hk_adjust_sell_pay_cost INTEGER NOT NULL DEFAULT 0;
         ");
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS ai_config (
                 id INTEGER PRIMARY KEY DEFAULT 1,
                 provider TEXT NOT NULL DEFAULT 'openai',
                 api_key TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL DEFAULT '',
                 base_url TEXT,
-                system_prompt TEXT NOT NULL DEFAULT '你是一位专业的投资顾问，帮助用户分析股票投资组合。',
+                -- The default system prompt lives in
+                -- `models::ai_config::DEFAULT_SYSTEM_PROMPT`; `get_ai_config`
+                -- falls back to it when no row is present.
+                system_prompt TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        // AI chat sessions & messages. Messages cascade-delete with their
+        // session via the foreign key (FK enforcement is enabled at the top
+        // of this function). Sessions are user-created named conversations;
+        // each session owns a full ordered message history.
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        ",
+        )?;
+
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                completion_tokens INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                cached_tokens INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_session
+                ON chat_messages(session_id, created_at);
+        ",
+        )?;
+
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS cached_quotes (
                 symbol TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
@@ -291,9 +388,11 @@ impl Database {
                 volume INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS cached_exchange_rates (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 usd_cny REAL NOT NULL,
@@ -301,9 +400,11 @@ impl Database {
                 cny_hkd REAL NOT NULL,
                 updated_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS option_records (
                 id TEXT PRIMARY KEY NOT NULL,
                 account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -323,7 +424,8 @@ impl Database {
                 settled_at TEXT,
                 created_at TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
 
         // Stock splits configuration for option contract matching
         conn.execute_batch(
@@ -363,19 +465,22 @@ impl Database {
         //
         // 1. Records created by the backfill_open_transactions tool:
         //    these always carry notes = 'backfill:initial'.
-        let _ = conn.execute_batch("
+        let _ = conn.execute_batch(
+            "
             UPDATE transactions
             SET transaction_type = 'OPEN'
             WHERE transaction_type = 'BUY'
               AND notes = 'backfill:initial'
               AND symbol NOT LIKE '$CASH-%';
-        ");
+        ",
+        );
 
         // 2. Records created by create_holding (initial position entries):
         //    identified by notes IS NULL, commission = 0, and the transaction's
         //    traded_at matching its parent holding's created_at exactly (because
         //    create_holding sets both to `now` in the same operation).
-        let _ = conn.execute_batch("
+        let _ = conn.execute_batch(
+            "
             UPDATE transactions
             SET transaction_type = 'OPEN'
             WHERE transaction_type = 'BUY'
@@ -386,7 +491,8 @@ impl Database {
               AND traded_at = (
                   SELECT h.created_at FROM holdings h WHERE h.id = holding_id
               );
-        ");
+        ",
+        );
 
         Ok(())
     }

@@ -124,7 +124,8 @@ export default function BackupSettings() {
       <Alert
         type="info"
         showIcon
-        message="还原备份"
+        className="mb-4"
+        title="还原备份"
         description="将备份的 .db 文件复制到应用数据目录，覆盖 portfolio.db 文件后重启应用即可还原。"
       />
 
@@ -164,7 +165,7 @@ export default function BackupSettings() {
 
       {/* 手动备份 */}
       <Card size="small" title="操作">
-        <Space direction="vertical" size="small" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="small" style={{ width: "100%" }}>
           <Descriptions size="small" column={1}>
             <Descriptions.Item label="备份状态">
               {config?.last_backup_time ? (

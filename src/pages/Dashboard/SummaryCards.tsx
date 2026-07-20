@@ -29,7 +29,7 @@ export default function SummaryCards({ summary, loading, error }: Props) {
   if (error) {
     return (
       <Alert
-        message="无法加载仪表盘数据"
+        title="无法加载仪表盘数据"
         description={error}
         type="warning"
         showIcon

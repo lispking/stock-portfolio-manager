@@ -444,7 +444,7 @@ export default function ImportHoldingFromFirstradeCsvModal({
           <Alert
             type="info"
             className="mb-4"
-            message="Firstrade 持仓导入"
+            title="Firstrade 持仓导入"
             description={
               <div>
                 <p style={{ marginBottom: 4 }}>
@@ -503,12 +503,12 @@ export default function ImportHoldingFromFirstradeCsvModal({
       {step === 1 && (
         <div>
           {parseWarnings.map((w, i) => (
-            <Alert key={i} type="warning" message={w} className="mb-2" showIcon />
+            <Alert key={i} type="warning" title={w} className="mb-2" showIcon />
           ))}
           {rows.length === 0 ? (
             <Alert
               type="error"
-              message="未能解析到任何持仓数据，请检查CSV文件格式是否正确"
+              title="未能解析到任何持仓数据，请检查CSV文件格式是否正确"
             />
           ) : (
             <>
@@ -546,7 +546,7 @@ export default function ImportHoldingFromFirstradeCsvModal({
         <div>
           <Alert
             type={importResult.failed === 0 ? "success" : "warning"}
-            message={`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`}
+            title={`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`}
             className="mb-4"
           />
           {importResult.errors.length > 0 && (
@@ -555,7 +555,7 @@ export default function ImportHoldingFromFirstradeCsvModal({
                 <Alert
                   key={i}
                   type="error"
-                  message={`${e.name}: ${e.error}`}
+                  title={`${e.name}: ${e.error}`}
                   className="mb-1"
                 />
               ))}

@@ -110,7 +110,10 @@ pub fn delete_category(db: State<Database>, id: String) -> Result<(), String> {
     if is_system != 0 {
         return Err("Cannot delete system categories".to_string());
     }
-    conn.execute("DELETE FROM categories WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM categories WHERE id = ?1",
+        rusqlite::params![id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }

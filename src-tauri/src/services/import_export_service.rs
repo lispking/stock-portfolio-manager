@@ -59,28 +59,31 @@ pub fn export_holdings_csv(db: &Database, filters: &ExportFilters) -> Result<Str
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
 
     let mut wtr = WriterBuilder::new().from_writer(vec![]);
-    wtr.write_record(&[
-        "账户名", "股票代码", "股票名称", "市场", "类别",
-        "持仓数量", "均价", "币种",
+    wtr.write_record([
+        "账户名",
+        "股票代码",
+        "股票名称",
+        "市场",
+        "类别",
+        "持仓数量",
+        "均价",
+        "币种",
     ])
     .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(
-            rusqlite::params_from_iter(params.iter()),
-            |row| {
-                Ok((
-                    row.get::<_, String>(0).unwrap_or_default(),
-                    row.get::<_, String>(1).unwrap_or_default(),
-                    row.get::<_, String>(2).unwrap_or_default(),
-                    row.get::<_, String>(3).unwrap_or_default(),
-                    row.get::<_, String>(4).unwrap_or_default(),
-                    row.get::<_, f64>(5).unwrap_or(0.0),
-                    row.get::<_, f64>(6).unwrap_or(0.0),
-                    row.get::<_, String>(7).unwrap_or_default(),
-                ))
-            },
-        )
+        .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0).unwrap_or_default(),
+                row.get::<_, String>(1).unwrap_or_default(),
+                row.get::<_, String>(2).unwrap_or_default(),
+                row.get::<_, String>(3).unwrap_or_default(),
+                row.get::<_, String>(4).unwrap_or_default(),
+                row.get::<_, f64>(5).unwrap_or(0.0),
+                row.get::<_, f64>(6).unwrap_or(0.0),
+                row.get::<_, String>(7).unwrap_or_default(),
+            ))
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -156,41 +159,73 @@ pub fn export_transactions_csv(
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
 
     let mut wtr = WriterBuilder::new().from_writer(vec![]);
-    wtr.write_record(&[
-        "交易日期", "账户名", "股票代码", "股票名称", "市场",
-        "买卖方向", "数量", "价格", "金额", "手续费", "币种", "备注",
+    wtr.write_record([
+        "交易日期",
+        "账户名",
+        "股票代码",
+        "股票名称",
+        "市场",
+        "买卖方向",
+        "数量",
+        "价格",
+        "金额",
+        "手续费",
+        "币种",
+        "备注",
     ])
     .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(
-            rusqlite::params_from_iter(params.iter()),
-            |row| {
-                Ok((
-                    row.get::<_, String>(0).unwrap_or_default(),
-                    row.get::<_, String>(1).unwrap_or_default(),
-                    row.get::<_, String>(2).unwrap_or_default(),
-                    row.get::<_, String>(3).unwrap_or_default(),
-                    row.get::<_, String>(4).unwrap_or_default(),
-                    row.get::<_, String>(5).unwrap_or_default(),
-                    row.get::<_, f64>(6).unwrap_or(0.0),
-                    row.get::<_, f64>(7).unwrap_or(0.0),
-                    row.get::<_, f64>(8).unwrap_or(0.0),
-                    row.get::<_, f64>(9).unwrap_or(0.0),
-                    row.get::<_, String>(10).unwrap_or_default(),
-                    row.get::<_, Option<String>>(11).unwrap_or(None).unwrap_or_default(),
-                ))
-            },
-        )
+        .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0).unwrap_or_default(),
+                row.get::<_, String>(1).unwrap_or_default(),
+                row.get::<_, String>(2).unwrap_or_default(),
+                row.get::<_, String>(3).unwrap_or_default(),
+                row.get::<_, String>(4).unwrap_or_default(),
+                row.get::<_, String>(5).unwrap_or_default(),
+                row.get::<_, f64>(6).unwrap_or(0.0),
+                row.get::<_, f64>(7).unwrap_or(0.0),
+                row.get::<_, f64>(8).unwrap_or(0.0),
+                row.get::<_, f64>(9).unwrap_or(0.0),
+                row.get::<_, String>(10).unwrap_or_default(),
+                row.get::<_, Option<String>>(11)
+                    .unwrap_or(None)
+                    .unwrap_or_default(),
+            ))
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    for (traded_at, account, symbol, name, market, tx_type, shares, price, amount, comm, currency, notes) in rows {
+    for (
+        traded_at,
+        account,
+        symbol,
+        name,
+        market,
+        tx_type,
+        shares,
+        price,
+        amount,
+        comm,
+        currency,
+        notes,
+    ) in rows
+    {
         wtr.write_record(&[
-            traded_at, account, symbol, name, market, tx_type,
-            shares.to_string(), price.to_string(), amount.to_string(),
-            comm.to_string(), currency, notes,
+            traded_at,
+            account,
+            symbol,
+            name,
+            market,
+            tx_type,
+            shares.to_string(),
+            price.to_string(),
+            amount.to_string(),
+            comm.to_string(),
+            currency,
+            notes,
         ])
         .map_err(|e| e.to_string())?;
     }
@@ -202,27 +237,52 @@ pub fn export_transactions_csv(
 /// Generate holdings import template CSV.
 pub fn get_holdings_template() -> String {
     let mut wtr = WriterBuilder::new().from_writer(vec![]);
-    let _ = wtr.write_record(&[
-        "symbol", "name", "market", "shares", "avg_cost", "currency",
-    ]);
-    let _ = wtr.write_record(&["AAPL", "苹果", "US", "100", "150.00", "USD"]);
+    let _ = wtr.write_record(["symbol", "name", "market", "shares", "avg_cost", "currency"]);
+    let _ = wtr.write_record(["AAPL", "苹果", "US", "100", "150.00", "USD"]);
     String::from_utf8(wtr.into_inner().unwrap_or_default()).unwrap_or_default()
 }
 
 /// Generate transactions import template CSV.
 pub fn get_transactions_template() -> String {
     let mut wtr = WriterBuilder::new().from_writer(vec![]);
-    let _ = wtr.write_record(&[
-        "traded_at", "symbol", "name", "market", "transaction_type",
-        "shares", "price", "total_amount", "commission", "currency", "notes",
+    let _ = wtr.write_record([
+        "traded_at",
+        "symbol",
+        "name",
+        "market",
+        "transaction_type",
+        "shares",
+        "price",
+        "total_amount",
+        "commission",
+        "currency",
+        "notes",
     ]);
-    let _ = wtr.write_record(&[
-        "2024-01-15", "AAPL", "苹果", "US", "BUY",
-        "100", "150.00", "", "0", "USD", "",
+    let _ = wtr.write_record([
+        "2024-01-15",
+        "AAPL",
+        "苹果",
+        "US",
+        "BUY",
+        "100",
+        "150.00",
+        "",
+        "0",
+        "USD",
+        "",
     ]);
-    let _ = wtr.write_record(&[
-        "2024-03-01", "AAPL", "苹果", "US", "PAY",
-        "0", "0", "50.00", "0", "USD", "分红派息",
+    let _ = wtr.write_record([
+        "2024-03-01",
+        "AAPL",
+        "苹果",
+        "US",
+        "PAY",
+        "0",
+        "0",
+        "50.00",
+        "0",
+        "USD",
+        "分红派息",
     ]);
     String::from_utf8(wtr.into_inner().unwrap_or_default()).unwrap_or_default()
 }
@@ -252,10 +312,8 @@ pub fn parse_import_csv(content: &str, data_type: &str) -> Result<ImportPreview,
         &required_transactions
     };
 
-    let column_mapping: HashMap<String, String> = headers
-        .iter()
-        .map(|h| (h.clone(), h.clone()))
-        .collect();
+    let column_mapping: HashMap<String, String> =
+        headers.iter().map(|h| (h.clone(), h.clone())).collect();
 
     let mut preview_data: Vec<serde_json::Value> = Vec::new();
     let mut error_rows: Vec<ImportError> = Vec::new();
@@ -344,7 +402,13 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
             let currency = {
                 let c = extract_str(row, "currency");
                 if c.is_empty() {
-                    if market == "CN" { "CNY" } else if market == "HK" { "HKD" } else { "USD" }
+                    if market == "CN" {
+                        "CNY"
+                    } else if market == "HK" {
+                        "HKD"
+                    } else {
+                        "USD"
+                    }
                 } else {
                     c
                 }
@@ -425,19 +489,31 @@ pub fn confirm_import(db: &Database, import_data: &ImportData) -> Result<ImportR
             };
             let notes: Option<String> = {
                 let n = extract_str(row, "notes").to_string();
-                if n.is_empty() { None } else { Some(n) }
+                if n.is_empty() {
+                    None
+                } else {
+                    Some(n)
+                }
             };
             // For PAY (dividend) rows the amount comes from the optional
             // `total_amount` column; for other types fall back to shares * price.
             let total_amount: f64 = {
                 let col_val: f64 = extract_str(row, "total_amount").parse().unwrap_or(0.0);
-                if col_val.abs() > 0.0 { col_val } else { shares * price }
+                if col_val.abs() > 0.0 {
+                    col_val
+                } else {
+                    shares * price
+                }
             };
 
             if symbol.is_empty() || traded_at.is_empty() {
                 skipped_rows.push(ImportSkipped {
                     row: row_num,
-                    symbol: if symbol.is_empty() { "(空)".to_string() } else { symbol.clone() },
+                    symbol: if symbol.is_empty() {
+                        "(空)".to_string()
+                    } else {
+                        symbol.clone()
+                    },
                     reason: if symbol.is_empty() && traded_at.is_empty() {
                         "symbol 和 traded_at 均为空".to_string()
                     } else if symbol.is_empty() {

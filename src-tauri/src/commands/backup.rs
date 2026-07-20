@@ -3,25 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{Manager, State};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct BackupConfig {
     pub directory: Option<String>,
     pub auto_backup: bool,
     pub last_backup_mtime: Option<u64>,
     pub last_backup_size: Option<u64>,
     pub last_backup_time: Option<String>,
-}
-
-impl Default for BackupConfig {
-    fn default() -> Self {
-        Self {
-            directory: None,
-            auto_backup: false,
-            last_backup_mtime: None,
-            last_backup_size: None,
-            last_backup_time: None,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,7 +19,7 @@ pub struct BackupResult {
     pub message: Option<String>,
 }
 
-fn config_path(app: &tauri::AppHandle) -> PathBuf {
+pub(crate) fn config_path(app: &tauri::AppHandle) -> PathBuf {
     app.path()
         .app_data_dir()
         .expect("failed to get app data dir")
@@ -82,15 +70,17 @@ pub fn set_backup_config(app: tauri::AppHandle, config: BackupConfig) -> Result<
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub fn backup_database_now(app: tauri::AppHandle, db: State<Database>) -> Result<BackupResult, String> {
+pub fn backup_database_now(
+    app: tauri::AppHandle,
+    db: State<Database>,
+) -> Result<BackupResult, String> {
     let config = load_config(&app);
     let dir = config
         .directory
         .as_ref()
         .ok_or_else(|| "请先设置备份目录".to_string())?;
     let backup_dir = PathBuf::from(dir);
-    std::fs::create_dir_all(&backup_dir)
-        .map_err(|e| format!("无法创建备份目录: {}", e))?;
+    std::fs::create_dir_all(&backup_dir).map_err(|e| format!("无法创建备份目录: {}", e))?;
 
     let db_path = &db.path;
 
@@ -106,8 +96,7 @@ pub fn backup_database_now(app: tauri::AppHandle, db: State<Database>) -> Result
     let filename = format!("portfolio_{}.db", now.format("%Y-%m-%d_%H-%M-%S"));
     let dest = backup_dir.join(&filename);
 
-    std::fs::copy(db_path, &dest)
-        .map_err(|e| format!("备份失败: {}", e))?;
+    std::fs::copy(db_path, &dest).map_err(|e| format!("备份失败: {}", e))?;
 
     let mut new_config = config;
     new_config.last_backup_mtime = file_mtime_secs(db_path);

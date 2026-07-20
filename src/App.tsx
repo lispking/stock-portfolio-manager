@@ -21,6 +21,7 @@ import AlertsPage from "./pages/Alerts";
 import ReviewPage from "./pages/Review";
 import SettingsPage from "./pages/Settings";
 import OptionsPage from "./pages/Options";
+import AiAssistantPage from "./pages/AiAssistant";
 
 function App() {
   // quoteWarning in the global store is the single source of truth for the
@@ -96,7 +97,7 @@ function App() {
         }}>
           <Alert
             type="warning"
-            message="行情获取提示"
+            title="行情获取提示"
             description={quoteWarning}
             showIcon
             closable
@@ -123,6 +124,7 @@ function App() {
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/ai-assistant" element={<AiAssistantPage />} />
         </Routes>
       </MainLayout>
     </>

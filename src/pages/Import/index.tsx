@@ -258,7 +258,7 @@ export default function ImportPage() {
         />
 
         {currentStep === 0 && (
-          <Space direction="vertical" style={{ width: "100%" }}>
+          <Space orientation="vertical" style={{ width: "100%" }}>
             <Space>
               <Text>数据类型：</Text>
               <Select
@@ -291,7 +291,7 @@ export default function ImportPage() {
         )}
 
         {currentStep === 1 && preview && (
-          <Space direction="vertical" style={{ width: "100%" }}>
+          <Space orientation="vertical" style={{ width: "100%" }}>
             <Space>
               <Tag color="blue">共 {preview.total_rows} 行</Tag>
               <Tag color="green">有效 {preview.valid_rows} 行</Tag>
@@ -303,7 +303,7 @@ export default function ImportPage() {
             {preview.error_rows.length > 0 && (
               <Alert
                 type="warning"
-                message="发现数据错误（错误行将被跳过）"
+                title="发现数据错误（错误行将被跳过）"
                 description={preview.error_rows
                   .slice(0, 5)
                   .map((e) => e.message)
@@ -349,11 +349,11 @@ export default function ImportPage() {
         )}
 
         {currentStep === 2 && (
-          <Space direction="vertical" style={{ width: "100%" }}>
+          <Space orientation="vertical" style={{ width: "100%" }}>
             {importResult && (
               <Alert
                 type="success"
-                message="导入完成"
+                title="导入完成"
                 description={
                   <ul>
                     <li>成功导入：{importResult.imported_count} 条</li>
@@ -369,7 +369,7 @@ export default function ImportPage() {
             {optionsImportResult && (
               <Alert
                 type="success"
-                message="导入完成"
+                title="导入完成"
                 description={
                   <ul>
                     <li>成功导入：{optionsImportResult.imported} 条</li>

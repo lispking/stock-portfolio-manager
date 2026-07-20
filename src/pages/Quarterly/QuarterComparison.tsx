@@ -132,8 +132,10 @@ export default function QuarterComparisonPage() {
                   value={ov?.value_change ?? 0}
                   precision={2}
                   prefix={`${(ov?.value_change ?? 0) >= 0 ? "+" : ""}$`}
-                  valueStyle={{
-                    color: pnlColorDark(ov?.value_change ?? 0),
+                  styles={{
+                    content: {
+                      color: pnlColorDark(ov?.value_change ?? 0),
+                    },
                   }}
                 />
               </Card>
@@ -146,8 +148,10 @@ export default function QuarterComparisonPage() {
                   precision={2}
                   suffix="%"
                   prefix={(ov?.value_change_percent ?? 0) >= 0 ? "+" : "-"}
-                  valueStyle={{
-                    color: pnlColorDark(ov?.value_change_percent ?? 0),
+                  styles={{
+                    content: {
+                      color: pnlColorDark(ov?.value_change_percent ?? 0),
+                    },
                   }}
                 />
               </Card>

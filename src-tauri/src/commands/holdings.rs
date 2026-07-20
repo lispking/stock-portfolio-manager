@@ -7,12 +7,16 @@ fn validate_holding_shares(market: &str, symbol: &str, shares: f64) -> Result<()
         return Err("Holding shares must be a non-negative number".to_string());
     }
     if !symbol.starts_with("$CASH-") && market != "US" && shares.fract().abs() > 1e-9 {
-        return Err("Only US holdings support fractional shares; CN and HK holdings must use whole shares".to_string());
+        return Err(
+            "Only US holdings support fractional shares; CN and HK holdings must use whole shares"
+                .to_string(),
+        );
     }
     Ok(())
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[allow(clippy::too_many_arguments)]
 pub fn create_holding(
     db: State<Database>,
     account_id: String,
@@ -47,7 +51,8 @@ pub fn create_holding(
         ));
     }
 
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(), String> {
         conn.execute(
@@ -165,6 +170,7 @@ pub fn get_holdings(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[allow(clippy::too_many_arguments)]
 pub fn update_holding(
     db: State<Database>,
     id: String,
@@ -186,7 +192,18 @@ pub fn update_holding(
             "UPDATE holdings SET account_id = ?2, symbol = ?3, name = ?4, market = ?5,
              category_id = ?6, shares = ?7, avg_cost = ?8, currency = ?9, updated_at = ?10
              WHERE id = ?1",
-            rusqlite::params![id, account_id, symbol, name, market, category_id, shares, avg_cost, currency, now],
+            rusqlite::params![
+                id,
+                account_id,
+                symbol,
+                name,
+                market,
+                category_id,
+                shares,
+                avg_cost,
+                currency,
+                now
+            ],
         )
         .map_err(|e| e.to_string())?;
     if rows_affected == 0 {
@@ -217,7 +234,8 @@ pub fn update_holding(
 #[tauri::command(rename_all = "camelCase")]
 pub fn delete_holding(db: State<Database>, id: String) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
     let result = (|| -> Result<(), String> {
         // Delete all transactions that belong to this holding (including the
         // initial BUY record created by create_holding).

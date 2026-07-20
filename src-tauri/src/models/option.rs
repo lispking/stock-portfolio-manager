@@ -19,26 +19,26 @@ pub struct OptionRecord {
     pub traded_at: Option<String>,
     pub settled_at: Option<String>,
     pub created_at: String,
-    pub contract_status: String,  // "active", "expired", "assigned", "closed"
+    pub contract_status: String, // "active", "expired", "assigned", "closed"
 }
 
 /// A paired option contract with status derived from matching records
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OptionContract {
-    pub id: String,             // unique identifier for this contract instance
+    pub id: String, // unique identifier for this contract instance
     pub option_symbol: String,
     pub underlying: String,
     pub expiry_date: String,
     pub strike_price: f64,
-    pub option_type: String,    // "P" or "C"
-    pub contracts: i64,         // number of contracts
-    pub open_price: f64,        // sell to open price
-    pub open_amount: f64,       // total premium received
-    pub commission: f64,        // commission paid on open
+    pub option_type: String,       // "P" or "C"
+    pub contracts: i64,            // number of contracts
+    pub open_price: f64,           // sell to open price
+    pub open_amount: f64,          // total premium received
+    pub commission: f64,           // commission paid on open
     pub traded_at: Option<String>, // trade date of the open record
     pub close_price: Option<f64>,
     pub close_code: Option<String>, // "C;Ep" (expired), "A;C" (assigned), "C;P" (closed)
-    pub status: String,         // "active", "expired", "assigned", "closed"
+    pub status: String,             // "active", "expired", "assigned", "closed"
     pub account_id: String,
 }
 

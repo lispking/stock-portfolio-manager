@@ -4,7 +4,11 @@ use crate::services::quote_provider_service::market_adjusts_sell_pay_cost;
 use crate::services::quote_service::{cash_display_name, CASH_SYMBOL_PREFIX};
 use tauri::State;
 
-fn validate_transaction_shares(market: &str, shares: f64, transaction_type: &str) -> Result<(), String> {
+fn validate_transaction_shares(
+    market: &str,
+    shares: f64,
+    transaction_type: &str,
+) -> Result<(), String> {
     // PAY (dividend) transactions don't require a positive share count
     if transaction_type == "PAY" {
         return Ok(());
@@ -82,6 +86,7 @@ pub(crate) fn adjust_cash_holding(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[allow(clippy::too_many_arguments)]
 pub fn create_transaction(
     db: State<Database>,
     account_id: String,
@@ -104,7 +109,8 @@ pub fn create_transaction(
     let now = chrono::Utc::now().to_rfc3339();
 
     // Wrap the entire operation in a SQLite transaction for atomicity
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(Option<String>,), String> {
         // Find existing holding for this symbol/account (case-insensitive)
@@ -266,27 +272,39 @@ pub fn get_transactions(
 
     let transactions = match (account_id, symbol) {
         (Some(aid), Some(sym)) => {
-            let query = format!("{} WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2) ORDER BY traded_at DESC", base_query);
+            let query = format!(
+                "{} WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2) ORDER BY traded_at DESC",
+                base_query
+            );
             let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-            let result = stmt.query_map(rusqlite::params![aid, sym], map_transaction)
+            let result = stmt
+                .query_map(rusqlite::params![aid, sym], map_transaction)
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             result
         }
         (Some(aid), None) => {
-            let query = format!("{} WHERE account_id = ?1 ORDER BY traded_at DESC", base_query);
+            let query = format!(
+                "{} WHERE account_id = ?1 ORDER BY traded_at DESC",
+                base_query
+            );
             let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-            let result = stmt.query_map(rusqlite::params![aid], map_transaction)
+            let result = stmt
+                .query_map(rusqlite::params![aid], map_transaction)
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             result
         }
         (None, Some(sym)) => {
-            let query = format!("{} WHERE UPPER(symbol) = UPPER(?1) ORDER BY traded_at DESC", base_query);
+            let query = format!(
+                "{} WHERE UPPER(symbol) = UPPER(?1) ORDER BY traded_at DESC",
+                base_query
+            );
             let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-            let result = stmt.query_map(rusqlite::params![sym], map_transaction)
+            let result = stmt
+                .query_map(rusqlite::params![sym], map_transaction)
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
@@ -295,7 +313,8 @@ pub fn get_transactions(
         (None, None) => {
             let query = format!("{} ORDER BY traded_at DESC", base_query);
             let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-            let result = stmt.query_map([], map_transaction)
+            let result = stmt
+                .query_map([], map_transaction)
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
@@ -327,6 +346,7 @@ fn map_transaction(row: &rusqlite::Row<'_>) -> rusqlite::Result<Transaction> {
 }
 
 #[tauri::command(rename_all = "camelCase")]
+#[allow(clippy::too_many_arguments)]
 pub fn update_transaction(
     db: State<Database>,
     id: String,
@@ -360,7 +380,8 @@ pub fn update_transaction(
         return Err("Cannot edit the initial position-opening record".to_string());
     }
 
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<Option<String>, String> {
         // 1) Reverse the old transaction's impact on its holding.
@@ -405,7 +426,8 @@ pub fn update_transaction(
                 // reversal adds back (total_amount - commission).
                 let new_shares = cur_shares + old_txn.shares;
                 let rev_avg = if old_adjust && new_shares > 0.0 {
-                    (cur_shares * cur_avg_cost + old_txn.total_amount - old_txn.commission) / new_shares
+                    (cur_shares * cur_avg_cost + old_txn.total_amount - old_txn.commission)
+                        / new_shares
                 } else {
                     cur_avg_cost
                 };
@@ -421,8 +443,18 @@ pub fn update_transaction(
         }
 
         // Reverse the old transaction's cash impact
-        let old_cash_delta = cash_delta(&old_txn.transaction_type, old_txn.total_amount, old_txn.commission);
-        adjust_cash_holding(&conn, &old_txn.account_id, &old_txn.currency, &old_txn.market, -old_cash_delta)?;
+        let old_cash_delta = cash_delta(
+            &old_txn.transaction_type,
+            old_txn.total_amount,
+            old_txn.commission,
+        );
+        adjust_cash_holding(
+            &conn,
+            &old_txn.account_id,
+            &old_txn.currency,
+            &old_txn.market,
+            -old_cash_delta,
+        )?;
 
         // 2) Apply the new transaction's impact on its holding.
         let holding_id: Option<String> = conn
@@ -556,7 +588,8 @@ pub fn delete_transaction(db: State<Database>, id: String) -> Result<(), String>
         return Err("Cannot delete the initial position-opening record".to_string());
     }
 
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(), String> {
         conn.execute(
@@ -579,9 +612,8 @@ pub fn delete_transaction(db: State<Database>, id: String) -> Result<(), String>
                     // added to the cost basis when this buy was recorded.
                     let new_shares = cur_shares - txn.shares;
                     let new_avg = if new_shares > 0.0 {
-                        let total_cost = cur_shares * cur_avg_cost
-                            - txn.shares * txn.price
-                            - txn.commission;
+                        let total_cost =
+                            cur_shares * cur_avg_cost - txn.shares * txn.price - txn.commission;
                         total_cost / new_shares
                     } else {
                         0.0
@@ -780,10 +812,8 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 "BUY" => {
                     let new_total = shares + tx.shares;
                     if new_total > 0.0 {
-                        avg_cost = (shares * avg_cost
-                            + tx.shares * tx.price
-                            + tx.commission)
-                            / new_total;
+                        avg_cost =
+                            (shares * avg_cost + tx.shares * tx.price + tx.commission) / new_total;
                     }
                     shares = new_total;
                 }
@@ -791,20 +821,16 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                     let remaining = shares - tx.shares;
                     if adjust {
                         avg_cost = if remaining > 0.0 {
-                            (shares * avg_cost - tx.total_amount + tx.commission)
-                                / remaining
+                            (shares * avg_cost - tx.total_amount + tx.commission) / remaining
                         } else {
                             0.0
                         };
                     }
                     shares = remaining;
                 }
-                "PAY" => {
-                    if adjust && shares > 0.0 {
-                        let net_amount = tx.total_amount - tx.commission;
-                        avg_cost =
-                            (shares * avg_cost - net_amount) / shares;
-                    }
+                "PAY" if adjust && shares > 0.0 => {
+                    let net_amount = tx.total_amount - tx.commission;
+                    avg_cost = (shares * avg_cost - net_amount) / shares;
                 }
                 _ => {}
             }
@@ -863,7 +889,9 @@ pub fn recalculate_holdings_cost(db: State<Database>) -> Result<(), String> {
                 "INSERT INTO holdings (id, account_id, symbol, name, market, category_id, \
                  shares, avg_cost, currency, created_at, updated_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10)",
-                rusqlite::params![new_id, account_id, symbol, name, market, shares, avg_cost, currency, now, now],
+                rusqlite::params![
+                    new_id, account_id, symbol, name, market, shares, avg_cost, currency, now, now
+                ],
             )
             .map_err(|e| e.to_string())?;
 

@@ -44,11 +44,9 @@ pub async fn capture_xueqiu_cookies(
     db: State<'_, Database>,
     close_window: Option<bool>,
 ) -> Result<QuoteProviderConfig, String> {
-    let win = app
-        .get_webview_window("xueqiu_login")
-        .ok_or_else(|| {
-            "未找到雪球登录窗口，请先点击「一键登录雪球」按钮打开登录窗口。".to_string()
-        })?;
+    let win = app.get_webview_window("xueqiu_login").ok_or_else(|| {
+        "未找到雪球登录窗口，请先点击「一键登录雪球」按钮打开登录窗口。".to_string()
+    })?;
 
     let cookies = win
         .cookies_for_url(url::Url::parse("https://xueqiu.com").unwrap())
@@ -155,8 +153,7 @@ pub async fn parse_xueqiu_cookie_text(
     }
 
     let token = xq_a_token.ok_or_else(|| {
-        "未在粘贴内容中找到 xq_a_token。请确认复制的是 xueqiu.com 域名下的完整 Cookie。"
-            .to_string()
+        "未在粘贴内容中找到 xq_a_token。请确认复制的是 xueqiu.com 域名下的完整 Cookie。".to_string()
     })?;
 
     let mut config = existing;

@@ -546,7 +546,7 @@ export default function ImportHoldingFromIbCsvModal({
             <Alert
               type="info"
               className="mb-4"
-              message="Interactive Brokers 持仓导入"
+              title="Interactive Brokers 持仓导入"
               description={
                 <div>
                   <p style={{ marginBottom: 4 }}>
@@ -573,7 +573,7 @@ export default function ImportHoldingFromIbCsvModal({
             <Alert
               type="info"
               className="mb-4"
-              message={`${marketLabel}持仓 CSV 导入`}
+              title={`${marketLabel}持仓 CSV 导入`}
               description={
                 <p style={{ marginBottom: 0 }}>
                   请上传包含 <b>Symbol</b>、<b>Quantity</b>、<b>Cost Price</b>{" "}
@@ -614,12 +614,12 @@ export default function ImportHoldingFromIbCsvModal({
       {step === 1 && (
         <div>
           {parseWarnings.map((w, i) => (
-            <Alert key={i} type="warning" message={w} className="mb-2" showIcon />
+            <Alert key={i} type="warning" title={w} className="mb-2" showIcon />
           ))}
           {rows.length === 0 ? (
             <Alert
               type="error"
-              message="未能解析到任何持仓数据，请检查CSV文件格式是否正确"
+              title="未能解析到任何持仓数据，请检查CSV文件格式是否正确"
             />
           ) : (
             <>
@@ -657,7 +657,7 @@ export default function ImportHoldingFromIbCsvModal({
         <div>
           <Alert
             type={importResult.failed === 0 ? "success" : "warning"}
-            message={`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`}
+            title={`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`}
             className="mb-4"
           />
           {importResult.errors.length > 0 && (
@@ -666,7 +666,7 @@ export default function ImportHoldingFromIbCsvModal({
                 <Alert
                   key={i}
                   type="error"
-                  message={`${e.name}: ${e.error}`}
+                  title={`${e.name}: ${e.error}`}
                   className="mb-1"
                   showIcon
                 />

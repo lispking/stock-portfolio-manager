@@ -60,5 +60,12 @@ pub async fn backfill_snapshots(
     let end = NaiveDate::parse_from_str(&end_date, "%Y-%m-%d")
         .map_err(|e| format!("Invalid end_date format (expected YYYY-MM-DD): {}", e))?;
 
-    crate::services::snapshot_service::backfill_snapshots(&db, &cache, start, end, force.unwrap_or(false)).await
+    crate::services::snapshot_service::backfill_snapshots(
+        &db,
+        &cache,
+        start,
+        end,
+        force.unwrap_or(false),
+    )
+    .await
 }

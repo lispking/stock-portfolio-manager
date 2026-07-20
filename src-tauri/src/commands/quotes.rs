@@ -1,7 +1,11 @@
 use crate::db::Database;
 use crate::models::{HoldingWithQuote, StockQuote};
-use crate::services::quote_service::{fetch_cn_quote_with_provider, fetch_hk_quote_with_provider, fetch_us_quote_with_provider, fetch_quotes_batch_cached_with_providers, save_quotes_to_db, QuoteCache, CASH_SYMBOL_PREFIX};
 use crate::services::quote_provider_service;
+use crate::services::quote_service::{
+    fetch_cn_quote_with_provider, fetch_hk_quote_with_provider,
+    fetch_quotes_batch_cached_with_providers, fetch_us_quote_with_provider, save_quotes_to_db,
+    QuoteCache, CASH_SYMBOL_PREFIX,
+};
 use tauri::State;
 
 #[tauri::command(rename_all = "camelCase")]
@@ -13,7 +17,15 @@ pub async fn get_real_time_quotes(
 ) -> Result<Vec<StockQuote>, String> {
     let config = quote_provider_service::get_quote_provider_config(&db)?;
     crate::services::quote_service::clear_quote_warning();
-    let quotes = fetch_quotes_batch_cached_with_providers(&quote_cache, symbols, &config.us_provider, &config.hk_provider, &config.cn_provider, force_refresh.unwrap_or(false)).await?;
+    let quotes = fetch_quotes_batch_cached_with_providers(
+        &quote_cache,
+        symbols,
+        &config.us_provider,
+        &config.hk_provider,
+        &config.cn_provider,
+        force_refresh.unwrap_or(false),
+    )
+    .await?;
     // Persist freshly fetched quotes to the database
     if let Err(e) = save_quotes_to_db(&db, &quotes) {
         eprintln!("Failed to persist quotes to DB: {}", e);
@@ -46,22 +58,23 @@ pub async fn get_holding_quotes(
                  FROM holdings ORDER BY market, symbol",
             )
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |row| {
-            Ok(crate::models::Holding {
-                id: row.get(0)?,
-                account_id: row.get(1)?,
-                symbol: row.get(2)?,
-                name: row.get(3)?,
-                market: row.get(4)?,
-                category_id: row.get(5)?,
-                shares: row.get(6)?,
-                avg_cost: row.get(7)?,
-                currency: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(crate::models::Holding {
+                    id: row.get(0)?,
+                    account_id: row.get(1)?,
+                    symbol: row.get(2)?,
+                    name: row.get(3)?,
+                    market: row.get(4)?,
+                    category_id: row.get(5)?,
+                    shares: row.get(6)?,
+                    avg_cost: row.get(7)?,
+                    currency: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
         let holdings = rows
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
@@ -77,9 +90,8 @@ pub async fn get_holding_quotes(
             std::collections::HashMap::new();
         for h in &holdings {
             if is_cleared_position(h) {
-                let pnl_data: (f64, f64) = match conn
-                    .query_row(
-                        "SELECT
+                let pnl_data: (f64, f64) = match conn.query_row(
+                    "SELECT
                             COALESCE(SUM(CASE
                                 WHEN transaction_type = 'SELL' THEN total_amount - commission
                                 WHEN transaction_type = 'BUY'  THEN -(total_amount + commission)
@@ -90,9 +102,9 @@ pub async fn get_holding_quotes(
                                 ELSE 0
                             END), 0.0)
                          FROM transactions WHERE holding_id = ?1",
-                        rusqlite::params![h.id],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    ) {
+                    rusqlite::params![h.id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                ) {
                     Ok(data) => data,
                     Err(e) => {
                         eprintln!("Failed to compute realized PnL for holding {}: {}", h.id, e);
@@ -119,38 +131,56 @@ pub async fn get_holding_quotes(
         Some(ref symbols) if !symbols.is_empty() => {
             // Targeted refresh: force-refresh only the specified symbols
             fetch_quotes_batch_cached_with_providers(
-                &quote_cache, symbols.clone(),
-                &config.us_provider, &config.hk_provider, &config.cn_provider, true,
-            ).await?;
+                &quote_cache,
+                symbols.clone(),
+                &config.us_provider,
+                &config.hk_provider,
+                &config.cn_provider,
+                true,
+            )
+            .await?;
             // Then load all quotes from cache (the refreshed ones are now fresh)
             fetch_quotes_batch_cached_with_providers(
-                &quote_cache, all_symbols,
-                &config.us_provider, &config.hk_provider, &config.cn_provider, false,
-            ).await?
+                &quote_cache,
+                all_symbols,
+                &config.us_provider,
+                &config.hk_provider,
+                &config.cn_provider,
+                false,
+            )
+            .await?
         }
         Some(_) => {
             // Empty list: no refresh needed, just use cache
             fetch_quotes_batch_cached_with_providers(
-                &quote_cache, all_symbols,
-                &config.us_provider, &config.hk_provider, &config.cn_provider, false,
-            ).await?
+                &quote_cache,
+                all_symbols,
+                &config.us_provider,
+                &config.hk_provider,
+                &config.cn_provider,
+                false,
+            )
+            .await?
         }
         None => {
             // No list provided: full refresh of all symbols
             fetch_quotes_batch_cached_with_providers(
-                &quote_cache, all_symbols,
-                &config.us_provider, &config.hk_provider, &config.cn_provider, true,
-            ).await?
+                &quote_cache,
+                all_symbols,
+                &config.us_provider,
+                &config.hk_provider,
+                &config.cn_provider,
+                true,
+            )
+            .await?
         }
     };
     // Persist freshly fetched quotes to the database
     if let Err(e) = save_quotes_to_db(&db, &quotes) {
         eprintln!("Failed to persist quotes to DB: {}", e);
     }
-    let quote_map: std::collections::HashMap<String, StockQuote> = quotes
-        .into_iter()
-        .map(|q| (q.symbol.clone(), q))
-        .collect();
+    let quote_map: std::collections::HashMap<String, StockQuote> =
+        quotes.into_iter().map(|q| (q.symbol.clone(), q)).collect();
 
     let result = holdings
         .into_iter()
@@ -171,14 +201,20 @@ pub async fn get_holding_quotes(
                 let market_value = quote.as_ref().map(|q| q.current_price * h.shares);
                 let total_cost = Some(h.avg_cost * h.shares);
                 let unrealized_pnl = market_value.zip(total_cost).map(|(mv, tc)| mv - tc);
-                let unrealized_pnl_percent = unrealized_pnl.zip(total_cost).and_then(|(pnl, tc)| {
-                    if tc > 0.0 {
-                        Some(pnl / tc * 100.0)
-                    } else {
-                        None
-                    }
-                });
-                (market_value, total_cost, unrealized_pnl, unrealized_pnl_percent)
+                let unrealized_pnl_percent =
+                    unrealized_pnl.zip(total_cost).and_then(|(pnl, tc)| {
+                        if tc > 0.0 {
+                            Some(pnl / tc * 100.0)
+                        } else {
+                            None
+                        }
+                    });
+                (
+                    market_value,
+                    total_cost,
+                    unrealized_pnl,
+                    unrealized_pnl_percent,
+                )
             };
             HoldingWithQuote {
                 id: h.id,
@@ -210,42 +246,54 @@ pub fn take_quote_warning() -> Option<String> {
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn get_us_quote(db: State<'_, Database>, quote_cache: State<'_, QuoteCache>, symbol: String) -> Result<StockQuote, String> {
+pub async fn get_us_quote(
+    db: State<'_, Database>,
+    quote_cache: State<'_, QuoteCache>,
+    symbol: String,
+) -> Result<StockQuote, String> {
     if let Some(cached) = quote_cache.get(&symbol) {
         return Ok(cached);
     }
     let config = quote_provider_service::get_quote_provider_config(&db)?;
     let quote = fetch_us_quote_with_provider(&symbol, &config.us_provider).await?;
     quote_cache.set(quote.clone());
-    if let Err(e) = save_quotes_to_db(&db, &[quote.clone()]) {
+    if let Err(e) = save_quotes_to_db(&db, std::slice::from_ref(&quote)) {
         eprintln!("Failed to persist quote to DB: {}", e);
     }
     Ok(quote)
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn get_hk_quote(db: State<'_, Database>, quote_cache: State<'_, QuoteCache>, symbol: String) -> Result<StockQuote, String> {
+pub async fn get_hk_quote(
+    db: State<'_, Database>,
+    quote_cache: State<'_, QuoteCache>,
+    symbol: String,
+) -> Result<StockQuote, String> {
     if let Some(cached) = quote_cache.get(&symbol) {
         return Ok(cached);
     }
     let config = quote_provider_service::get_quote_provider_config(&db)?;
     let quote = fetch_hk_quote_with_provider(&symbol, &config.hk_provider).await?;
     quote_cache.set(quote.clone());
-    if let Err(e) = save_quotes_to_db(&db, &[quote.clone()]) {
+    if let Err(e) = save_quotes_to_db(&db, std::slice::from_ref(&quote)) {
         eprintln!("Failed to persist quote to DB: {}", e);
     }
     Ok(quote)
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn get_cn_quote(db: State<'_, Database>, quote_cache: State<'_, QuoteCache>, symbol: String) -> Result<StockQuote, String> {
+pub async fn get_cn_quote(
+    db: State<'_, Database>,
+    quote_cache: State<'_, QuoteCache>,
+    symbol: String,
+) -> Result<StockQuote, String> {
     if let Some(cached) = quote_cache.get(&symbol) {
         return Ok(cached);
     }
     let config = quote_provider_service::get_quote_provider_config(&db)?;
     let quote = fetch_cn_quote_with_provider(&symbol, &config.cn_provider).await?;
     quote_cache.set(quote.clone());
-    if let Err(e) = save_quotes_to_db(&db, &[quote.clone()]) {
+    if let Err(e) = save_quotes_to_db(&db, std::slice::from_ref(&quote)) {
         eprintln!("Failed to persist quote to DB: {}", e);
     }
     Ok(quote)

@@ -72,7 +72,7 @@ export default function TrendsPage() {
                       value={latestPnl}
                       precision={2}
                       prefix="$"
-                      valueStyle={{ color: pnlColorDark(latestPnl) }}
+                      styles={{ content: {  color: pnlColorDark(latestPnl)  } }}
                     />
                   </Card>
                 </Col>

@@ -32,10 +32,7 @@ pub async fn get_import_template(data_type: String) -> Result<String, String> {
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn parse_import_csv(
-    content: String,
-    data_type: String,
-) -> Result<ImportPreview, String> {
+pub async fn parse_import_csv(content: String, data_type: String) -> Result<ImportPreview, String> {
     import_export_service::parse_import_csv(&content, &data_type)
 }
 

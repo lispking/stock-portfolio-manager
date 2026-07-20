@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Checkbox, Form, Input, Radio, Select, Space, Tabs, Typography, message } from "antd";
+import { Button, Card, Checkbox, Form, Input, Modal, Radio, Select, Space, Tabs, Typography, message } from "antd";
 import { invoke } from "@tauri-apps/api/core";
+import { useExchangeRateStore } from "../../stores/exchangeRateStore";
 import { useQuoteStore } from "../../stores/quoteStore";
 import { useSettingsStore, type ColorScheme } from "../../stores/settingsStore";
 import { useXueqiuLogin } from "../../hooks/useXueqiuLogin";
@@ -33,9 +34,34 @@ const COLOR_SCHEME_OPTIONS: { value: ColorScheme; label: string }[] = [
   { value: "green-up", label: "绿涨红跌（美股风格）" },
 ];
 
+// The default quote provider config, matching the Rust
+// `impl Default for QuoteProviderConfig`. Used to reset the local UI state
+// after a factory reset so the form doesn't briefly show stale values.
+const DEFAULT_PROVIDER_CONFIG: QuoteProviderConfig = {
+  us_provider: "xueqiu",
+  hk_provider: "xueqiu",
+  cn_provider: "xueqiu",
+  xueqiu_cookie: null,
+  xueqiu_u: null,
+  cn_adjust_sell_pay_cost: true,
+  us_adjust_sell_pay_cost: false,
+  hk_adjust_sell_pay_cost: false,
+};
+
+// localStorage keys that hold UI preferences (the only front-end persisted
+// state — everything else lives in the Tauri SQLite backend).
+const LOCAL_STORAGE_KEYS = [
+  "pnl_color_scheme",
+  "quote_refresh_interval_ms",
+  "base_currency",
+  "statistics_selected_market",
+  "options_selected_account_id",
+] as const;
+
 export default function GeneralSettings() {
   const { refreshIntervalMs, setRefreshInterval } = useQuoteStore();
   const { colorScheme, setColorScheme } = useSettingsStore();
+  const { setBaseCurrency } = useExchangeRateStore();
   const [providerConfig, setProviderConfig] = useState<QuoteProviderConfig>({
     us_provider: "xueqiu",
     hk_provider: "xueqiu",
@@ -50,6 +76,12 @@ export default function GeneralSettings() {
   const [capturing, setCapturing] = useState(false);
   const [pastingRaw, setPastingRaw] = useState("");
   const [parsing, setParsing] = useState(false);
+
+  // Factory-reset confirmation state. The checkbox starts unchecked every
+  // time the modal opens so the user must actively re-acknowledge the risk.
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetAcknowledged, setResetAcknowledged] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // Single source of truth for "capture succeeded": both the explicit button
   // and the auto-capture-on-close path flow through here, so the toast fires
@@ -173,6 +205,39 @@ export default function GeneralSettings() {
     }
   };
 
+  const handleFactoryResetClick = () => {
+    setResetAcknowledged(false);
+    setResetModalOpen(true);
+  };
+
+  const handleConfirmFactoryReset = async () => {
+    setResetting(true);
+    try {
+      // 1. Wipe the SQLite DB and reset backend config tables to defaults.
+      await invoke("factory_reset");
+
+      // 2. Drop front-end persisted preferences. The Zustand loaders fall
+      //    back to their built-in defaults once the keys are gone.
+      LOCAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+
+      // 3. Push those defaults into the in-memory stores so the UI updates
+      //    immediately, even before the full-page reload below.
+      setColorScheme("red-up");
+      setRefreshInterval(5 * 60_000);
+      setBaseCurrency("USD");
+      setProviderConfig(DEFAULT_PROVIDER_CONFIG);
+
+      setResetModalOpen(false);
+      message.success("已恢复出厂设置，应用即将刷新…");
+      // Give the toast a moment to render before the page is torn down.
+      setTimeout(() => window.location.reload(), 800);
+    } catch (err) {
+      message.error("恢复出厂设置失败: " + String(err));
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const isXueqiuUsed =
     providerConfig.us_provider === "xueqiu" ||
     providerConfig.hk_provider === "xueqiu" ||
@@ -197,7 +262,7 @@ export default function GeneralSettings() {
                 key: "login",
                 label: "一键登录",
                 children: (
-                  <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                  <Space orientation="vertical" style={{ width: "100%" }} size="middle">
                     <Space>
                       <Button onClick={handleOpenLoginWindow}>
                         {loginWindowOpen ? "已打开登录窗口，去登录" : "一键登录雪球"}
@@ -250,7 +315,7 @@ export default function GeneralSettings() {
                     <Form.Item
                       extra="浏览器登录 xueqiu.com → F12 → Application → Cookies → 分别复制 xq_a_token 和 u 的值"
                     >
-                      <Space direction="vertical" style={{ width: "100%" }} size="small">
+                      <Space orientation="vertical" style={{ width: "100%" }} size="small">
                         <Input
                           addonBefore="xq_a_token"
                           placeholder="6a7dc04b2c6770dc8e..."
@@ -391,6 +456,64 @@ export default function GeneralSettings() {
           港股和美股的卖出盈亏需缴所得税、分红需缴红利税，IB 等券商不调整成本，便于准确计算应税收益。
         </Paragraph>
       </Card>
+
+      <Card
+        title={<span style={{ color: "#cf1322" }}>⚠️ 危险操作</span>}
+        styles={{ header: { borderBottomColor: "#ffd6cc" } }}
+        style={{ borderColor: "#ffa39e" }}
+      >
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            恢复出厂设置将<strong>永久清除</strong>以下数据并重置所有配置：
+          </Typography.Paragraph>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            • 所有账户、持仓、交易记录、季度快照、价格提醒<br />
+            • 所有 AI 聊天记录、期权记录、股票拆分红利配置<br />
+            • 行情数据源与雪球 Cookie、AI 配置、备份配置<br />
+            • 盈亏配色、刷新频率、基础货币等界面偏好
+          </Typography.Paragraph>
+          <Typography.Paragraph type="danger" strong style={{ marginBottom: 0 }}>
+            此操作不可恢复，请谨慎操作！
+          </Typography.Paragraph>
+          <div>
+            <Button type="primary" danger onClick={handleFactoryResetClick}>
+              恢复出厂设置
+            </Button>
+          </div>
+        </Space>
+      </Card>
+
+      <Modal
+        open={resetModalOpen}
+        title="确认恢复出厂设置"
+        okText="确认清空"
+        cancelText="取消"
+        okButtonProps={{
+          danger: true,
+          loading: resetting,
+          disabled: !resetAcknowledged,
+        }}
+        cancelButtonProps={{ disabled: resetting }}
+        closable={!resetting}
+        maskClosable={!resetting}
+        onCancel={() => setResetModalOpen(false)}
+        onOk={handleConfirmFactoryReset}
+      >
+        <Space direction="vertical" size="middle" style={{ width: "100%", paddingTop: 8 }}>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            即将清空所有账户、持仓、交易、快照、AI 聊天记录等数据，并将全部配置重置为初始状态。
+          </Typography.Paragraph>
+          <Typography.Paragraph type="danger" strong style={{ marginBottom: 0 }}>
+            此操作不可恢复，建议先在「SQLite 备份」页手动备份。
+          </Typography.Paragraph>
+          <Checkbox
+            checked={resetAcknowledged}
+            onChange={(e) => setResetAcknowledged(e.target.checked)}
+          >
+            我已了解此操作会永久清除所有数据且不可恢复
+          </Checkbox>
+        </Space>
+      </Modal>
     </div>
   );
 }

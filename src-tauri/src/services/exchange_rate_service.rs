@@ -54,6 +54,13 @@ impl ExchangeRateCache {
         let lock = self.inner.lock().unwrap();
         lock.as_ref().map(|c| c.rates.clone())
     }
+
+    /// Drop the cached rates. Used by `factory_reset` so the next read
+    /// after the database is wiped fetches fresh rates.
+    pub fn clear(&self) {
+        let mut lock = self.inner.lock().unwrap();
+        *lock = None;
+    }
 }
 
 /// Fetch the latest exchange rates from open.er-api.com (USD base).
@@ -79,7 +86,10 @@ pub async fn fetch_exchange_rates() -> Result<ExchangeRates, String> {
 
     if let Some(result) = &data.result {
         if result != "success" {
-            return Err(format!("Exchange rate API returned non-success result: {}", result));
+            return Err(format!(
+                "Exchange rate API returned non-success result: {}",
+                result
+            ));
         }
     }
 
@@ -109,7 +119,12 @@ pub fn save_exchange_rates_to_db(db: &Database, rates: &ExchangeRates) -> Result
     conn.execute(
         "INSERT OR REPLACE INTO cached_exchange_rates (id, usd_cny, usd_hkd, cny_hkd, updated_at)
          VALUES (1, ?1, ?2, ?3, ?4)",
-        rusqlite::params![rates.usd_cny, rates.usd_hkd, rates.cny_hkd, rates.updated_at],
+        rusqlite::params![
+            rates.usd_cny,
+            rates.usd_hkd,
+            rates.cny_hkd,
+            rates.updated_at
+        ],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

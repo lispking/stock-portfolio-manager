@@ -141,7 +141,7 @@ export default function SnapshotDetail() {
               value={snap?.total_pnl ?? 0}
               precision={2}
               prefix="$"
-              valueStyle={{ color: pnlColor }}
+              styles={{ content: {  color: pnlColor  } }}
             />
           </Card>
         </Col>

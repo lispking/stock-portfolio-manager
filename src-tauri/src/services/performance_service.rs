@@ -6,9 +6,9 @@ const RISK_FREE_RATE: f64 = 0.045; // 4.5% US 10-year treasury default
 const TRADING_DAYS_PER_YEAR: f64 = 252.0;
 const CACHE_COVERAGE_THRESHOLD: f64 = 0.5; // require 50% of expected days in cache to skip re-fetch
 use crate::models::performance::{
-    annualise_return, AttributionItem, BenchmarkDataPoint,
-    DrawdownAnalysis, DrawdownPoint, HoldingPerformance, MonthlyReturn, PerformanceSummary,
-    ReturnAttribution, ReturnDataPoint, RiskMetrics,
+    annualise_return, AttributionItem, BenchmarkDataPoint, DrawdownAnalysis, DrawdownPoint,
+    HoldingPerformance, MonthlyReturn, PerformanceSummary, ReturnAttribution, ReturnDataPoint,
+    RiskMetrics,
 };
 use chrono::NaiveDate;
 
@@ -108,10 +108,8 @@ fn fetch_filtered_daily_values(
          FROM daily_holding_snapshots
          WHERE date BETWEEN ?1 AND ?2",
     );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-        Box::new(start_str),
-        Box::new(end_str),
-    ];
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+        vec![Box::new(start_str), Box::new(end_str)];
 
     filter.append_where_clauses(&mut sql, &mut params);
 
@@ -144,7 +142,11 @@ fn fetch_filtered_daily_values(
 /// Fetch the portfolio value on the latest day strictly before `date`.
 /// Used as the baseline for cumulative-return curves so that the first
 /// visible day already shows a non-zero return.
-fn fetch_previous_day_value(db: &Database, date: NaiveDate, filter: &PerformanceFilter) -> Result<Option<f64>, String> {
+fn fetch_previous_day_value(
+    db: &Database,
+    date: NaiveDate,
+    filter: &PerformanceFilter,
+) -> Result<Option<f64>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let date_str = date.format("%Y-%m-%d").to_string();
     if filter.is_active() {
@@ -156,7 +158,8 @@ fn fetch_previous_day_value(db: &Database, date: NaiveDate, filter: &Performance
         sql.push(')');
         // Apply same filters to outer WHERE
         filter.append_where_clauses(&mut sql, &mut params);
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let result = conn
             .query_row(&sql, param_refs.as_slice(), |row| row.get::<_, f64>(0))
             .ok();
@@ -306,7 +309,11 @@ pub fn calculate_volatility(daily_returns: &[f64]) -> (f64, f64) {
         return (0.0, 0.0);
     }
     let mean = daily_returns.iter().sum::<f64>() / n as f64;
-    let variance = daily_returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+    let variance = daily_returns
+        .iter()
+        .map(|r| (r - mean).powi(2))
+        .sum::<f64>()
+        / (n - 1) as f64;
     let daily_vol = variance.sqrt();
     let annualised_vol = daily_vol * TRADING_DAYS_PER_YEAR.sqrt();
     (daily_vol, annualised_vol)
@@ -387,7 +394,10 @@ pub fn get_performance_summary(
 
     // daily_return values from build_return_series are already in percentage
     // form (e.g. 1.5 means 1.5%), so convert to decimal for volatility/Sharpe.
-    let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return / 100.0).collect();
+    let daily_returns: Vec<f64> = return_series
+        .iter()
+        .map(|r| r.daily_return / 100.0)
+        .collect();
     let (_daily_vol, ann_vol) = calculate_volatility(&daily_returns);
     let sharpe = calculate_sharpe(annualised, RISK_FREE_RATE, ann_vol);
 
@@ -438,14 +448,21 @@ pub fn get_risk_metrics(
 
     // daily_return values from build_return_series are already in percentage
     // form (e.g. 1.5 means 1.5%), so convert to decimal for volatility/Sharpe.
-    let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return / 100.0).collect();
+    let daily_returns: Vec<f64> = return_series
+        .iter()
+        .map(|r| r.daily_return / 100.0)
+        .collect();
     let (daily_vol, ann_vol) = calculate_volatility(&daily_returns);
 
     let sharpe = calculate_sharpe(annualised, RISK_FREE_RATE, ann_vol);
 
     let dd_analysis = calculate_max_drawdown(&return_series);
     let max_dd = dd_analysis.max_drawdown.abs() / 100.0;
-    let calmar = if max_dd > 0.0 { annualised / max_dd } else { 0.0 };
+    let calmar = if max_dd > 0.0 {
+        annualised / max_dd
+    } else {
+        0.0
+    };
 
     Ok(RiskMetrics {
         daily_volatility: daily_vol * 100.0,
@@ -470,8 +487,7 @@ pub fn get_return_attribution(
     // Get start and end snapshots aggregated by symbol
     let mut start_vals: std::collections::HashMap<String, (String, String, f64)> =
         std::collections::HashMap::new();
-    let mut end_vals: std::collections::HashMap<String, f64> =
-        std::collections::HashMap::new();
+    let mut end_vals: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
 
     {
         // Build start query with filters applied to both subquery and outer query
@@ -486,7 +502,8 @@ pub fn get_return_attribution(
         sql.push(')');
         filter.append_where_clauses(&mut sql, &mut params);
         sql.push_str(" GROUP BY symbol");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -519,7 +536,8 @@ pub fn get_return_attribution(
         sql.push(')');
         filter.append_where_clauses(&mut sql, &mut params);
         sql.push_str(" GROUP BY symbol");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -541,25 +559,26 @@ pub fn get_return_attribution(
     {
         let actual_start_str = {
             // Use the actual snapshot start date (MAX(date) <= start_date)
-            let mut sql = String::from(
-                "SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
-            );
-            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_str.clone())];
+            let mut sql =
+                String::from("SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1");
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                vec![Box::new(start_str.clone())];
             filter.append_where_clauses(&mut sql, &mut params);
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            conn.query_row(&sql, param_refs.as_slice(), |row| row.get::<_, Option<String>>(0))
-                .map_err(|e| e.to_string())?
-                .unwrap_or_else(|| start_str.clone())
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
+            conn.query_row(&sql, param_refs.as_slice(), |row| {
+                row.get::<_, Option<String>>(0)
+            })
+            .map_err(|e| e.to_string())?
+            .unwrap_or_else(|| start_str.clone())
         };
         let mut sql = String::from(
             "SELECT symbol, transaction_type, SUM(total_amount)
              FROM transactions
              WHERE DATE(traded_at) > ?1 AND DATE(traded_at) <= ?2",
         );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-            Box::new(actual_start_str),
-            Box::new(end_str.clone()),
-        ];
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(actual_start_str), Box::new(end_str.clone())];
         if let Some(ref account_id) = filter.account_id {
             sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
             params.push(Box::new(account_id.clone()));
@@ -569,7 +588,8 @@ pub fn get_return_attribution(
             params.push(Box::new(market.clone()));
         }
         sql.push_str(" GROUP BY symbol, transaction_type");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -598,25 +618,22 @@ pub fn get_return_attribution(
             .prepare("SELECT symbol, name FROM holdings")
             .map_err(|e| e.to_string())?;
         let rows = name_stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
         rows.into_iter().collect()
     };
 
-    let all_symbols: std::collections::HashSet<String> = start_vals
-        .keys()
-        .chain(end_vals.keys())
-        .cloned()
-        .collect();
+    let all_symbols: std::collections::HashSet<String> =
+        start_vals.keys().chain(end_vals.keys()).cloned().collect();
 
     let mut total_pnl = 0.0f64;
     let mut total_start_val = 0.0f64;
-    let mut market_pnl: std::collections::HashMap<String, f64> =
-        std::collections::HashMap::new();
-    let mut category_pnl: std::collections::HashMap<String, f64> =
-        std::collections::HashMap::new();
+    let mut market_pnl: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    let mut category_pnl: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
     let mut holding_pnl: std::collections::HashMap<String, (String, String, f64, f64, f64)> =
         std::collections::HashMap::new();
 
@@ -654,32 +671,35 @@ pub fn get_return_attribution(
             .or_insert((market, cat, pnl, sv, ev));
     }
 
-    let make_items =
-        |map: std::collections::HashMap<String, f64>| -> Vec<AttributionItem> {
-            let mut items: Vec<AttributionItem> = map
-                .into_iter()
-                .map(|(name, pnl)| {
-                    let contribution_percent = if total_pnl != 0.0 {
-                        pnl / total_pnl.abs() * 100.0
-                    } else {
-                        0.0
-                    };
-                    let weight = if total_start_val != 0.0 {
-                        pnl / total_start_val * 100.0
-                    } else {
-                        0.0
-                    };
-                    AttributionItem {
-                        name,
-                        pnl,
-                        contribution_percent,
-                        weight,
-                    }
-                })
-                .collect();
-            items.sort_by(|a, b| b.pnl.partial_cmp(&a.pnl).unwrap_or(std::cmp::Ordering::Equal));
-            items
-        };
+    let make_items = |map: std::collections::HashMap<String, f64>| -> Vec<AttributionItem> {
+        let mut items: Vec<AttributionItem> = map
+            .into_iter()
+            .map(|(name, pnl)| {
+                let contribution_percent = if total_pnl != 0.0 {
+                    pnl / total_pnl.abs() * 100.0
+                } else {
+                    0.0
+                };
+                let weight = if total_start_val != 0.0 {
+                    pnl / total_start_val * 100.0
+                } else {
+                    0.0
+                };
+                AttributionItem {
+                    name,
+                    pnl,
+                    contribution_percent,
+                    weight,
+                }
+            })
+            .collect();
+        items.sort_by(|a, b| {
+            b.pnl
+                .partial_cmp(&a.pnl)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        items
+    };
 
     let market_label = |m: &str| match m {
         "US" => "🇺🇸 美股".to_string(),
@@ -721,7 +741,11 @@ pub fn get_return_attribution(
             }
         })
         .collect();
-    by_holding.sort_by(|a, b| b.pnl.partial_cmp(&a.pnl).unwrap_or(std::cmp::Ordering::Equal));
+    by_holding.sort_by(|a, b| {
+        b.pnl
+            .partial_cmp(&a.pnl)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(ReturnAttribution {
         total_pnl,
@@ -823,12 +847,14 @@ pub fn get_holding_performance_ranking(
              WHERE date = (
                  SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
         );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(date_param.to_string())];
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(date_param.to_string())];
         filter.append_where_clauses(&mut sql, &mut params);
         sql.push(')');
         filter.append_where_clauses(&mut sql, &mut params);
         sql.push_str(" GROUP BY symbol");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -853,25 +879,26 @@ pub fn get_holding_performance_ranking(
         std::collections::HashMap::new();
     {
         let actual_start_str = {
-            let mut sql = String::from(
-                "SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
-            );
-            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_str.clone())];
+            let mut sql =
+                String::from("SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1");
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                vec![Box::new(start_str.clone())];
             filter.append_where_clauses(&mut sql, &mut params);
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            conn.query_row(&sql, param_refs.as_slice(), |row| row.get::<_, Option<String>>(0))
-                .map_err(|e| e.to_string())?
-                .unwrap_or_else(|| start_str.clone())
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
+            conn.query_row(&sql, param_refs.as_slice(), |row| {
+                row.get::<_, Option<String>>(0)
+            })
+            .map_err(|e| e.to_string())?
+            .unwrap_or_else(|| start_str.clone())
         };
         let mut sql = String::from(
             "SELECT symbol, transaction_type, SUM(total_amount)
              FROM transactions
              WHERE DATE(traded_at) > ?1 AND DATE(traded_at) <= ?2",
         );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-            Box::new(actual_start_str),
-            Box::new(end_str.clone()),
-        ];
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(actual_start_str), Box::new(end_str.clone())];
         if let Some(ref account_id) = filter.account_id {
             sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
             params.push(Box::new(account_id.clone()));
@@ -881,7 +908,8 @@ pub fn get_holding_performance_ranking(
             params.push(Box::new(market.clone()));
         }
         sql.push_str(" GROUP BY symbol, transaction_type");
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -922,7 +950,11 @@ pub fn get_holding_performance_ranking(
             let cf = net_cash_flows.get(&e.symbol).copied().unwrap_or(0.0);
             let pnl = ev - sv - cf;
             let cost_base = sv + cf.max(0.0); // start_value + any additional investment
-            let return_rate = if cost_base > 0.0 { pnl / cost_base * 100.0 } else { 0.0 };
+            let return_rate = if cost_base > 0.0 {
+                pnl / cost_base * 100.0
+            } else {
+                0.0
+            };
             HoldingPerformance {
                 symbol: e.symbol,
                 name: String::new(), // will be filled below
@@ -942,7 +974,9 @@ pub fn get_holding_performance_ranking(
             .prepare("SELECT symbol, name FROM holdings")
             .map_err(|e| e.to_string())?;
         let name_map: std::collections::HashMap<String, String> = name_stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?
@@ -1092,7 +1126,13 @@ pub async fn fetch_benchmark_history(
                 .unwrap_or_default()
                 .date_naive();
             let change_pct = prev_close
-                .map(|pc| if pc != 0.0 { (cl_f - pc) / pc * 100.0 } else { 0.0 })
+                .map(|pc| {
+                    if pc != 0.0 {
+                        (cl_f - pc) / pc * 100.0
+                    } else {
+                        0.0
+                    }
+                })
                 .unwrap_or(0.0);
             points.push(BenchmarkDataPoint {
                 date: date.format("%Y-%m-%d").to_string(),
@@ -1159,8 +1199,16 @@ mod tests {
     #[test]
     fn test_twr_calculation() {
         let periods = vec![
-            SubPeriod { start_value: 100.0, end_value: 110.0, cash_flow: 0.0 },
-            SubPeriod { start_value: 110.0, end_value: 99.0, cash_flow: 0.0 },
+            SubPeriod {
+                start_value: 100.0,
+                end_value: 110.0,
+                cash_flow: 0.0,
+            },
+            SubPeriod {
+                start_value: 110.0,
+                end_value: 99.0,
+                cash_flow: 0.0,
+            },
         ];
         let twr = calculate_twr_from_periods(&periods);
         // (110/100 - 1) = 0.1, (99/110 - 1) = -0.1, TWR = 1.1 * 0.9 - 1 = -0.01
@@ -1187,10 +1235,34 @@ mod tests {
     #[test]
     fn test_max_drawdown() {
         let series: Vec<ReturnDataPoint> = vec![
-            ReturnDataPoint { date: "2024-01-01".to_string(), cumulative_return: 0.0, daily_return: 0.0, portfolio_value: 100.0, daily_pnl: 0.0 },
-            ReturnDataPoint { date: "2024-01-02".to_string(), cumulative_return: 10.0, daily_return: 10.0, portfolio_value: 110.0, daily_pnl: 10.0 },
-            ReturnDataPoint { date: "2024-01-03".to_string(), cumulative_return: -5.0, daily_return: -15.0, portfolio_value: 95.0, daily_pnl: -15.0 },
-            ReturnDataPoint { date: "2024-01-04".to_string(), cumulative_return: 5.0, daily_return: 10.0, portfolio_value: 105.0, daily_pnl: 10.0 },
+            ReturnDataPoint {
+                date: "2024-01-01".to_string(),
+                cumulative_return: 0.0,
+                daily_return: 0.0,
+                portfolio_value: 100.0,
+                daily_pnl: 0.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-02".to_string(),
+                cumulative_return: 10.0,
+                daily_return: 10.0,
+                portfolio_value: 110.0,
+                daily_pnl: 10.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-03".to_string(),
+                cumulative_return: -5.0,
+                daily_return: -15.0,
+                portfolio_value: 95.0,
+                daily_pnl: -15.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-04".to_string(),
+                cumulative_return: 5.0,
+                daily_return: 10.0,
+                portfolio_value: 105.0,
+                daily_pnl: 10.0,
+            },
         ];
         let dd = calculate_max_drawdown(&series);
         // Peak = 110 on day 2, trough = 95 on day 3 → MDD = (95-110)/110 ≈ -13.6%
@@ -1240,9 +1312,21 @@ mod tests {
     fn test_benchmark_to_return_series_no_base() {
         use crate::models::performance::BenchmarkDataPoint;
         let points = vec![
-            BenchmarkDataPoint { date: "2024-01-01".into(), close_price: 100.0, change_percent: 0.0 },
-            BenchmarkDataPoint { date: "2024-01-02".into(), close_price: 105.0, change_percent: 5.0 },
-            BenchmarkDataPoint { date: "2024-01-03".into(), close_price: 103.0, change_percent: -1.9 },
+            BenchmarkDataPoint {
+                date: "2024-01-01".into(),
+                close_price: 100.0,
+                change_percent: 0.0,
+            },
+            BenchmarkDataPoint {
+                date: "2024-01-02".into(),
+                close_price: 105.0,
+                change_percent: 5.0,
+            },
+            BenchmarkDataPoint {
+                date: "2024-01-03".into(),
+                close_price: 103.0,
+                change_percent: -1.9,
+            },
         ];
         let series = benchmark_to_return_series(&points, None);
         assert_eq!(series.len(), 3);
@@ -1257,8 +1341,16 @@ mod tests {
         use crate::models::performance::BenchmarkDataPoint;
         // Previous day close was 95 → first visible day already shows a return
         let points = vec![
-            BenchmarkDataPoint { date: "2024-01-02".into(), close_price: 100.0, change_percent: 5.26 },
-            BenchmarkDataPoint { date: "2024-01-03".into(), close_price: 105.0, change_percent: 5.0 },
+            BenchmarkDataPoint {
+                date: "2024-01-02".into(),
+                close_price: 100.0,
+                change_percent: 5.26,
+            },
+            BenchmarkDataPoint {
+                date: "2024-01-03".into(),
+                close_price: 105.0,
+                change_percent: 5.0,
+            },
         ];
         let series = benchmark_to_return_series(&points, Some(95.0));
         assert_eq!(series.len(), 2);
@@ -1279,9 +1371,11 @@ mod tests {
     #[test]
     fn test_twr_single_period_no_cash_flow() {
         // Simple case: one period, 10% return
-        let periods = vec![
-            SubPeriod { start_value: 1000.0, end_value: 1100.0, cash_flow: 0.0 },
-        ];
+        let periods = vec![SubPeriod {
+            start_value: 1000.0,
+            end_value: 1100.0,
+            cash_flow: 0.0,
+        }];
         let twr = calculate_twr_from_periods(&periods);
         assert!((twr - 0.10).abs() < 1e-9);
     }
@@ -1297,8 +1391,16 @@ mod tests {
         // period_return = (1600 - 1100 - 500) / 1100 = 0.0
         // That makes sense — the growth was entirely from the deposit
         let periods = vec![
-            SubPeriod { start_value: 1000.0, end_value: 1100.0, cash_flow: 0.0 },
-            SubPeriod { start_value: 1100.0, end_value: 1600.0, cash_flow: 500.0 },
+            SubPeriod {
+                start_value: 1000.0,
+                end_value: 1100.0,
+                cash_flow: 0.0,
+            },
+            SubPeriod {
+                start_value: 1100.0,
+                end_value: 1600.0,
+                cash_flow: 500.0,
+            },
         ];
         let twr = calculate_twr_from_periods(&periods);
         // TWR = (1 + 0.10) * (1 + 0.0) - 1 = 0.10
@@ -1308,8 +1410,16 @@ mod tests {
     #[test]
     fn test_twr_with_loss() {
         let periods = vec![
-            SubPeriod { start_value: 1000.0, end_value: 900.0, cash_flow: 0.0 },
-            SubPeriod { start_value: 900.0, end_value: 810.0, cash_flow: 0.0 },
+            SubPeriod {
+                start_value: 1000.0,
+                end_value: 900.0,
+                cash_flow: 0.0,
+            },
+            SubPeriod {
+                start_value: 900.0,
+                end_value: 810.0,
+                cash_flow: 0.0,
+            },
         ];
         let twr = calculate_twr_from_periods(&periods);
         // (900/1000) * (810/900) - 1 = 0.9 * 0.9 - 1 = -0.19
@@ -1325,9 +1435,11 @@ mod tests {
 
     #[test]
     fn test_twr_zero_start_value_returns_zero() {
-        let periods = vec![
-            SubPeriod { start_value: 0.0, end_value: 100.0, cash_flow: 0.0 },
-        ];
+        let periods = vec![SubPeriod {
+            start_value: 0.0,
+            end_value: 100.0,
+            cash_flow: 0.0,
+        }];
         let twr = calculate_twr_from_periods(&periods);
         // period_return returns 0.0 when start_value is 0, so TWR = (1+0) - 1 = 0
         assert!((twr - 0.0).abs() < 1e-9);
@@ -1395,9 +1507,27 @@ mod tests {
     fn test_max_drawdown_no_drawdown() {
         // Monotonically increasing portfolio
         let series: Vec<ReturnDataPoint> = vec![
-            ReturnDataPoint { date: "2024-01-01".into(), cumulative_return: 0.0, daily_return: 0.0, portfolio_value: 100.0, daily_pnl: 0.0 },
-            ReturnDataPoint { date: "2024-01-02".into(), cumulative_return: 5.0, daily_return: 5.0, portfolio_value: 105.0, daily_pnl: 5.0 },
-            ReturnDataPoint { date: "2024-01-03".into(), cumulative_return: 10.0, daily_return: 5.0, portfolio_value: 110.0, daily_pnl: 5.0 },
+            ReturnDataPoint {
+                date: "2024-01-01".into(),
+                cumulative_return: 0.0,
+                daily_return: 0.0,
+                portfolio_value: 100.0,
+                daily_pnl: 0.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-02".into(),
+                cumulative_return: 5.0,
+                daily_return: 5.0,
+                portfolio_value: 105.0,
+                daily_pnl: 5.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-03".into(),
+                cumulative_return: 10.0,
+                daily_return: 5.0,
+                portfolio_value: 110.0,
+                daily_pnl: 5.0,
+            },
         ];
         let dd = calculate_max_drawdown(&series);
         assert!((dd.max_drawdown - 0.0).abs() < 1e-9);
@@ -1413,10 +1543,34 @@ mod tests {
     #[test]
     fn test_max_drawdown_with_recovery() {
         let series: Vec<ReturnDataPoint> = vec![
-            ReturnDataPoint { date: "2024-01-01".into(), cumulative_return: 0.0, daily_return: 0.0, portfolio_value: 100.0, daily_pnl: 0.0 },
-            ReturnDataPoint { date: "2024-01-02".into(), cumulative_return: 20.0, daily_return: 20.0, portfolio_value: 120.0, daily_pnl: 20.0 },
-            ReturnDataPoint { date: "2024-01-03".into(), cumulative_return: 0.0, daily_return: -16.67, portfolio_value: 100.0, daily_pnl: -20.0 },
-            ReturnDataPoint { date: "2024-01-04".into(), cumulative_return: 25.0, daily_return: 25.0, portfolio_value: 125.0, daily_pnl: 25.0 },
+            ReturnDataPoint {
+                date: "2024-01-01".into(),
+                cumulative_return: 0.0,
+                daily_return: 0.0,
+                portfolio_value: 100.0,
+                daily_pnl: 0.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-02".into(),
+                cumulative_return: 20.0,
+                daily_return: 20.0,
+                portfolio_value: 120.0,
+                daily_pnl: 20.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-03".into(),
+                cumulative_return: 0.0,
+                daily_return: -16.67,
+                portfolio_value: 100.0,
+                daily_pnl: -20.0,
+            },
+            ReturnDataPoint {
+                date: "2024-01-04".into(),
+                cumulative_return: 25.0,
+                daily_return: 25.0,
+                portfolio_value: 125.0,
+                daily_pnl: 25.0,
+            },
         ];
         let dd = calculate_max_drawdown(&series);
         // Peak=120, trough=100 → (100-120)/120 = -16.67%
@@ -1435,9 +1589,7 @@ mod tests {
 
     #[test]
     fn test_build_return_series_single_point() {
-        let daily = vec![
-            (parse_date("2024-01-01").unwrap(), 100.0, 0.0),
-        ];
+        let daily = vec![(parse_date("2024-01-01").unwrap(), 100.0, 0.0)];
         let series = build_return_series(&daily, None);
         assert_eq!(series.len(), 1);
         assert!((series[0].cumulative_return - 0.0).abs() < 1e-6);

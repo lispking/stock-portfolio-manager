@@ -4,8 +4,8 @@ use crate::models::quarterly::{
     QuarterlySnapshotDetail, QuarterlyTrends, StockTransactionGroup,
 };
 use crate::services::exchange_rate_service::ExchangeRateCache;
-use crate::services::quote_service::QuoteCache;
 use crate::services::quarterly_service;
+use crate::services::quote_service::QuoteCache;
 use tauri::State;
 
 #[tauri::command(rename_all = "camelCase")]
@@ -52,9 +52,7 @@ pub async fn refresh_quarterly_snapshot(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn check_missing_snapshots(
-    db: State<'_, Database>,
-) -> Result<Vec<String>, String> {
+pub async fn check_missing_snapshots(db: State<'_, Database>) -> Result<Vec<String>, String> {
     quarterly_service::check_missing_snapshots(&db)
 }
 
@@ -102,9 +100,7 @@ pub async fn get_quarterly_notes_history(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn get_quarterly_trends(
-    db: State<'_, Database>,
-) -> Result<QuarterlyTrends, String> {
+pub async fn get_quarterly_trends(db: State<'_, Database>) -> Result<QuarterlyTrends, String> {
     quarterly_service::get_quarterly_trends(&db)
 }
 

@@ -132,7 +132,7 @@ pub async fn lookup_stock_name_by_symbol(symbol: String) -> Result<Option<String
             _ => continue,
         };
         let suffix = if code.contains(':') {
-            code.split(':').last().unwrap_or(code)
+            code.split(':').next_back().unwrap_or(code)
         } else {
             code
         };
@@ -223,8 +223,12 @@ fn split_image_by_separators(data: &[u8]) -> Vec<Vec<u8>> {
         let mut sum: u32 = 0;
         for x in 0..width {
             let lum = gray.get_pixel(x, y)[0] as u32;
-            if lum < min_lum { min_lum = lum; }
-            if lum > max_lum { max_lum = lum; }
+            if lum < min_lum {
+                min_lum = lum;
+            }
+            if lum > max_lum {
+                max_lum = lum;
+            }
             sum += lum;
         }
         let mean = sum / width;
@@ -278,10 +282,7 @@ fn split_image_by_separators(data: &[u8]) -> Vec<Vec<u8>> {
         let sub = img.crop_imm(0, y0, width, y1 - y0);
         let mut buf: Vec<u8> = Vec::new();
         if sub
-            .write_to(
-                &mut std::io::Cursor::new(&mut buf),
-                image::ImageFormat::Png,
-            )
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
             .is_ok()
         {
             slices.push(buf);
@@ -329,8 +330,12 @@ fn preprocess_for_ocr(data: &[u8]) -> Vec<u8> {
     let (w, h) = img.dimensions();
     let img = if w < MIN_OCR_WIDTH {
         // Ceiling: scale up so result width ≥ MIN_OCR_WIDTH.
-        let scale = (MIN_OCR_WIDTH + w - 1) / w;
-        img.resize(w * scale, h * scale, image::imageops::FilterType::CatmullRom)
+        let scale = MIN_OCR_WIDTH.div_ceil(w);
+        img.resize(
+            w * scale,
+            h * scale,
+            image::imageops::FilterType::CatmullRom,
+        )
     } else {
         img
     };
@@ -354,10 +359,7 @@ fn preprocess_for_ocr(data: &[u8]) -> Vec<u8> {
 
     let mut buf: Vec<u8> = Vec::new();
     if image::DynamicImage::ImageLuma8(binary)
-        .write_to(
-            &mut std::io::Cursor::new(&mut buf),
-            image::ImageFormat::Png,
-        )
+        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
         .is_ok()
     {
         buf
@@ -431,8 +433,7 @@ fn ocr_image(data: &[u8]) -> Result<String, String> {
 
     // Read the output .txt file.
     let out_file = format!("{}.txt", out_base);
-    std::fs::read_to_string(&out_file)
-        .map_err(|e| format!("读取 OCR 结果失败: {}", e))
+    std::fs::read_to_string(&out_file).map_err(|e| format!("读取 OCR 结果失败: {}", e))
 }
 
 /// Parse the plain-text output of Tesseract (from a 同花顺 trade screenshot)
@@ -569,7 +570,11 @@ fn parse_ths_ocr(text: &str) -> Vec<ParsedTradeRow> {
 /// Return "BUY" or "SELL" for a confirmed anchor line (caller must verify
 /// `is_trade_anchor` first).
 fn anchor_tx_type(line: &str) -> &'static str {
-    if line.contains("卖出") { "SELL" } else { "BUY" }
+    if line.contains("卖出") {
+        "SELL"
+    } else {
+        "BUY"
+    }
 }
 
 /// Remove all trade-direction keywords from `line` and return the remainder.
@@ -611,12 +616,13 @@ fn parse_ths_ocr_dateline_fallback(
 ) -> Option<Vec<ParsedTradeRow>> {
     // Regex for a "date row": optional non-digit prefix, then MM-DD or MM.DD,
     // then optional space, then HH:MM or HH.MM or HHMM.
-    let dateline_re = regex::Regex::new(
-        r"^[^\d]*(\d{1,2})[.\-](\d{2})\s*[.\-:]?(\d{2})[.\-:]?(\d{2})"
-    ).unwrap();
+    let dateline_re =
+        regex::Regex::new(r"^[^\d]*(\d{1,2})[.\-](\d{2})\s*[.\-:]?(\d{2})[.\-:]?(\d{2})").unwrap();
     // For extracting numbers that follow AFTER the date/time portion.
     let pos_num_re = regex::Regex::new(r"\b(\d+(?:\.\d+)?)\b").unwrap();
     let all_num_re = regex::Regex::new(r"-?\d+(?:\.\d+)?").unwrap();
+    // For skipping group-header lines containing a 4-digit year (e.g. "∧ 2026-04").
+    let year_re = regex::Regex::new(r"\b\d{4}\b").unwrap();
 
     let mut rows: Vec<ParsedTradeRow> = Vec::new();
 
@@ -624,11 +630,11 @@ fn parse_ths_ocr_dateline_fallback(
         let trimmed = line.trim();
         let cap = match dateline_re.captures(trimmed) {
             Some(c) => c,
-            None    => continue,
+            None => continue,
         };
-        let month:  u32 = cap[1].parse().unwrap_or(0);
-        let day:    u32 = cap[2].parse().unwrap_or(0);
-        let hour:   u32 = cap[3].parse().unwrap_or(9);
+        let month: u32 = cap[1].parse().unwrap_or(0);
+        let day: u32 = cap[2].parse().unwrap_or(0);
+        let hour: u32 = cap[3].parse().unwrap_or(9);
         let minute: u32 = cap[4].parse().unwrap_or(30);
         if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
             continue;
@@ -668,7 +674,7 @@ fn parse_ths_ocr_dateline_fallback(
             .find(|l| !l.is_empty() && !dateline_re.is_match(l));
         let price_line = match price_line {
             Some(l) => l,
-            None    => continue,
+            None => continue,
         };
         let price_idx = lines[..i]
             .iter()
@@ -692,19 +698,22 @@ fn parse_ths_ocr_dateline_fallback(
         let amount_opt = all_nums.iter().copied().find(|&n| n < 0.0);
         let (tx_type, price_opt) = if let Some(_neg) = amount_opt {
             // negative amount → BUY; price is the smallest positive < 10 000
-            ("BUY", pos_nums.iter().copied().filter(|&n| n > 0.0 && n < 10_000.0).next())
+            (
+                "BUY",
+                pos_nums.iter().copied().find(|&n| n > 0.0 && n < 10_000.0),
+            )
         } else if pos_nums.len() >= 2 {
             // All positive: infer from scale.
             // Find the smallest positive number that could be a per-share price
             // (< 10 000), then check if any OTHER positive is > price × 1.5
             // (i.e. it's the total amount, not another price).  If so → SELL.
-            let price_cand = pos_nums.iter().copied()
+            let price_cand = pos_nums
+                .iter()
+                .copied()
                 .filter(|&n| n > 0.0 && n < 10_000.0)
                 .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            let amount_cand = price_cand.and_then(|p| {
-                pos_nums.iter().copied()
-                    .find(|&n| n > p * 1.5)
-            });
+            let amount_cand =
+                price_cand.and_then(|p| pos_nums.iter().copied().find(|&n| n > p * 1.5));
             if price_cand.is_some() && amount_cand.is_some() {
                 ("SELL", price_cand)
             } else {
@@ -731,13 +740,10 @@ fn parse_ths_ocr_dateline_fallback(
             .take(4)
             .find_map(|l| {
                 // Skip group-header lines containing a year number (e.g. "∧ 2026-04").
-                let has_year = regex::Regex::new(r"\b\d{4}\b").ok()
-                    .map_or(false, |re| re.is_match(l));
-                if has_year {
+                if year_re.is_match(l) {
                     return None;
                 }
-                extract_longest_cjk_run(l)
-                    .filter(|name| name.chars().count() >= 2)
+                extract_longest_cjk_run(l).filter(|name| name.chars().count() >= 2)
             })
             .unwrap_or_else(|| "未知".to_string());
 
@@ -786,8 +792,14 @@ fn extract_year(text: &str) -> i32 {
         if start > 0 && text.as_bytes()[start - 1].is_ascii_digit() {
             continue;
         }
-        let y: i32 = match cap[1].parse() { Ok(y) => y, Err(_) => continue };
-        let m: u32 = match cap[2].parse() { Ok(m) => m, Err(_) => continue };
+        let y: i32 = match cap[1].parse() {
+            Ok(y) => y,
+            Err(_) => continue,
+        };
+        let m: u32 = match cap[2].parse() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
         // Accept a year only if the month component is plausible (1–12) and the
         // year is within a reasonable range of the current year (±10 years).
         let current_year = chrono::Utc::now().year();
@@ -908,14 +920,12 @@ fn extract_fields_from_context(
     // follows the date (e.g. "04.221426" ← merged "04-22 14:26").
     // The captured HHMM is discarded; we want to strip the spurious digits so
     // they don't pollute number extraction.
-    let date_clean_re = regex::Regex::new(
-        r"(\d{1,2})[.-](\d{2})(?:\s*([01]\d|2[0-3])([0-5]\d)\b)?",
-    )
-    .unwrap();
+    let date_clean_re =
+        regex::Regex::new(r"(\d{1,2})[.-](\d{2})(?:\s*([01]\d|2[0-3])([0-5]\d)\b)?").unwrap();
     let time_re = regex::Regex::new(r"\b(\d{1,2}):(\d{2})(?::\d{2})?\b").unwrap();
-    let neg_re  = regex::Regex::new(r"-\d+(?:[.,]\d+)?").unwrap();
-    let pct_re  = regex::Regex::new(r"\d+(?:\.\d+)?\s*%").unwrap();
-    let num_re  = regex::Regex::new(r"\b(\d+(?:\.\d+)?)\b").unwrap();
+    let neg_re = regex::Regex::new(r"-\d+(?:[.,]\d+)?").unwrap();
+    let pct_re = regex::Regex::new(r"\d+(?:\.\d+)?\s*%").unwrap();
+    let num_re = regex::Regex::new(r"\b(\d+(?:\.\d+)?)\b").unwrap();
 
     // Combine anchor extra + window into one searchable string.
     let mut parts: Vec<&str> = vec![anchor_extra];
@@ -925,9 +935,8 @@ fn extract_fields_from_context(
     // Helper: check that the byte immediately before position `pos` in `s` is
     // NOT an ASCII digit.  This is the manual lookbehind that replaces the
     // leading \b (which doesn't fire between CJK and ASCII digits in Rust regex).
-    let not_preceded_by_digit = |s: &str, pos: usize| -> bool {
-        pos == 0 || !s.as_bytes()[pos - 1].is_ascii_digit()
-    };
+    let not_preceded_by_digit =
+        |s: &str, pos: usize| -> bool { pos == 0 || !s.as_bytes()[pos - 1].is_ascii_digit() };
 
     // --- Date (3-tier cascade) ---
     //
@@ -938,56 +947,57 @@ fn extract_fields_from_context(
     //          A manual "not preceded by ASCII digit" guard replaces it.
     // Tier C – 8-digit MMDDHHMI blob (e.g. "04091353") produced when OCR
     //          merges date *and* time with all separators lost.
-    let (effective_year, month, day) =
-        if let Some(cap) = full_ymd_re.captures(&all_text) {
-            let y = cap[1].parse::<i32>().unwrap_or(year);
-            let m = cap[2].parse::<u32>().unwrap_or(1);
-            let d = cap[3].parse::<u32>().unwrap_or(1);
-            (y, m, d)
-        } else if let Some((m, d)) = date_re
-            .captures_iter(&all_text)
-            .filter_map(|cap| {
-                let start = cap.get(0)?.start();
-                if !not_preceded_by_digit(&all_text, start) {
-                    return None;
-                }
-                let m = cap[1].parse::<u32>().ok()?;
-                let d = cap[2].parse::<u32>().ok()?;
-                if (1..=12).contains(&m) && (1..=31).contains(&d) {
-                    Some((m, d))
-                } else {
-                    None
-                }
-            })
-            .next()
-        {
-            (year, m, d)
-        } else if let Some((m, d)) = {
-            // Tier C: isolated 8-digit blob – first 4 digits are MMDD.
-            // Bind eight_re to a local so its lifetime doesn't escape the block.
-            let eight_re = regex::Regex::new(r"\d{8}").unwrap();
-            let result = eight_re.find_iter(&all_text).find_map(|m_match| {
-                let start = m_match.start();
-                let end   = m_match.end();
-                if !not_preceded_by_digit(&all_text, start) { return None; }
-                if end < all_text.len() && all_text.as_bytes()[end].is_ascii_digit() {
-                    return None;
-                }
-                let s = m_match.as_str();
-                let month: u32 = s[0..2].parse().ok()?;
-                let day:   u32 = s[2..4].parse().ok()?;
-                if (1..=12).contains(&month) && (1..=31).contains(&day) {
-                    Some((month, day))
-                } else {
-                    None
-                }
-            });
-            result
-        } {
-            (year, m, d)
-        } else {
-            return None; // no date found → cannot form a valid trade row
-        };
+    let (effective_year, month, day) = if let Some(cap) = full_ymd_re.captures(&all_text) {
+        let y = cap[1].parse::<i32>().unwrap_or(year);
+        let m = cap[2].parse::<u32>().unwrap_or(1);
+        let d = cap[3].parse::<u32>().unwrap_or(1);
+        (y, m, d)
+    } else if let Some((m, d)) = date_re
+        .captures_iter(&all_text)
+        .filter_map(|cap| {
+            let start = cap.get(0)?.start();
+            if !not_preceded_by_digit(&all_text, start) {
+                return None;
+            }
+            let m = cap[1].parse::<u32>().ok()?;
+            let d = cap[2].parse::<u32>().ok()?;
+            if (1..=12).contains(&m) && (1..=31).contains(&d) {
+                Some((m, d))
+            } else {
+                None
+            }
+        })
+        .next()
+    {
+        (year, m, d)
+    } else if let Some((m, d)) = {
+        // Tier C: isolated 8-digit blob – first 4 digits are MMDD.
+        // Bind eight_re to a local so its lifetime doesn't escape the block.
+        let eight_re = regex::Regex::new(r"\d{8}").unwrap();
+        let result = eight_re.find_iter(&all_text).find_map(|m_match| {
+            let start = m_match.start();
+            let end = m_match.end();
+            if !not_preceded_by_digit(&all_text, start) {
+                return None;
+            }
+            if end < all_text.len() && all_text.as_bytes()[end].is_ascii_digit() {
+                return None;
+            }
+            let s = m_match.as_str();
+            let month: u32 = s[0..2].parse().ok()?;
+            let day: u32 = s[2..4].parse().ok()?;
+            if (1..=12).contains(&month) && (1..=31).contains(&day) {
+                Some((month, day))
+            } else {
+                None
+            }
+        });
+        result
+    } {
+        (year, m, d)
+    } else {
+        return None; // no date found → cannot form a valid trade row
+    };
 
     // --- Time ---
     let (hour, minute) = time_re
@@ -1091,9 +1101,7 @@ fn assign_fields_ordered(numbers: &[f64]) -> Option<(f64, f64, f64, f64)> {
             }
             for si in (pi + 1)..numbers.len() {
                 let shares_raw = numbers[si];
-                if shares_raw < min_shares
-                    || (shares_raw - shares_raw.round()).abs() > 0.5
-                {
+                if shares_raw < min_shares || (shares_raw - shares_raw.round()).abs() > 0.5 {
                     continue;
                 }
                 let shares = shares_raw.round();
@@ -1383,7 +1391,9 @@ mod tests {
 
     #[test]
     fn test_is_trade_anchor_mai_ren() {
-        assert!(is_trade_anchor("买人 2026-04-22 14:26 28.95 2000 57865.44 54.57"));
+        assert!(is_trade_anchor(
+            "买人 2026-04-22 14:26 28.95 2000 57865.44 54.57"
+        ));
         // Should be classified BUY, not SELL
         assert_eq!(anchor_tx_type("买人 28.95 2000"), "BUY");
     }
@@ -1497,7 +1507,10 @@ mod tests {
         // Real: price=28.95, net=57865.43, shares=2000, commission=34.57 (0.06% of total)
         let nums = vec![28.95_f64, 57865.43, 2000.0, 34.57];
         let (_price, _shares, _total, comm) = assign_fields_ordered(&nums).unwrap();
-        assert!((comm - 34.57).abs() < 0.01, "correct commission should be preserved, got {comm}");
+        assert!(
+            (comm - 34.57).abs() < 0.01,
+            "correct commission should be preserved, got {comm}"
+        );
     }
 
     /// Extra rogue numbers before the real price (e.g. a sequence number).
@@ -1592,19 +1605,44 @@ mod tests {
 04-22  14:26   2000  57900.00  150.00
 ";
         let rows = parse_ths_ocr(text);
-        assert_eq!(rows.len(), 2, "expected 2 rows, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            2,
+            "expected 2 rows, got {}: {rows:?}",
+            rows.len()
+        );
 
         let sell = rows.iter().find(|r| r.transaction_type == "SELL").unwrap();
         assert_eq!(sell.stock_name, "双汇发展");
-        assert!((sell.price - 28.41).abs() < 0.01, "sell price={}", sell.price);
-        assert!((sell.shares - 2000.0).abs() < 0.01, "sell shares={}", sell.shares);
-        assert!((sell.total_amount - 56820.0).abs() < 1.0, "sell total={}", sell.total_amount);
-        assert!((sell.commission - 33.98).abs() < 0.01, "sell comm={}", sell.commission);
+        assert!(
+            (sell.price - 28.41).abs() < 0.01,
+            "sell price={}",
+            sell.price
+        );
+        assert!(
+            (sell.shares - 2000.0).abs() < 0.01,
+            "sell shares={}",
+            sell.shares
+        );
+        assert!(
+            (sell.total_amount - 56820.0).abs() < 1.0,
+            "sell total={}",
+            sell.total_amount
+        );
+        assert!(
+            (sell.commission - 33.98).abs() < 0.01,
+            "sell comm={}",
+            sell.commission
+        );
 
         let buy = rows.iter().find(|r| r.transaction_type == "BUY").unwrap();
         assert_eq!(buy.stock_name, "招商银行");
         assert!((buy.price - 28.95).abs() < 0.01, "buy price={}", buy.price);
-        assert!((buy.shares - 2000.0).abs() < 0.01, "buy shares={}", buy.shares);
+        assert!(
+            (buy.shares - 2000.0).abs() < 0.01,
+            "buy shares={}",
+            buy.shares
+        );
     }
 
     /// All six fields on one OCR line (fully inline THS format).
@@ -1640,12 +1678,25 @@ mod tests {
 买人 2026-04-22 14:26 28.95 2000 57865.44 54.57
 ";
         let rows = parse_ths_ocr(text);
-        assert_eq!(rows.len(), 2, "expected 2 rows, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            2,
+            "expected 2 rows, got {}: {rows:?}",
+            rows.len()
+        );
 
         let sell = rows.iter().find(|r| r.transaction_type == "SELL").unwrap();
         assert_eq!(sell.stock_name, "双汇发展");
-        assert!((sell.price - 28.41).abs() < 0.01, "sell price={}", sell.price);
-        assert!((sell.shares - 2000.0).abs() < 0.01, "sell shares={}", sell.shares);
+        assert!(
+            (sell.price - 28.41).abs() < 0.01,
+            "sell price={}",
+            sell.price
+        );
+        assert!(
+            (sell.shares - 2000.0).abs() < 0.01,
+            "sell shares={}",
+            sell.shares
+        );
         // total_amount must be price × shares, not the OCR'd net amount.
         assert!(
             (sell.total_amount - 28.41 * 2000.0).abs() < 1.0,
@@ -1653,13 +1704,21 @@ mod tests {
             sell.total_amount,
             28.41 * 2000.0
         );
-        assert!((sell.commission - 33.98).abs() < 0.01, "sell comm={}", sell.commission);
+        assert!(
+            (sell.commission - 33.98).abs() < 0.01,
+            "sell comm={}",
+            sell.commission
+        );
         assert_eq!(sell.traded_at, "2026-04-09T09:58:00");
 
         let buy = rows.iter().find(|r| r.transaction_type == "BUY").unwrap();
         assert_eq!(buy.stock_name, "招商银行");
         assert!((buy.price - 28.95).abs() < 0.01, "buy price={}", buy.price);
-        assert!((buy.shares - 2000.0).abs() < 0.01, "buy shares={}", buy.shares);
+        assert!(
+            (buy.shares - 2000.0).abs() < 0.01,
+            "buy shares={}",
+            buy.shares
+        );
         assert_eq!(buy.traded_at, "2026-04-22T14:26:00");
     }
 
@@ -1712,21 +1771,34 @@ mod tests {
             6,
             "expected 6 rows, got {}: {:?}",
             rows.len(),
-            rows.iter().map(|r| format!("{}/{}", r.stock_name, r.transaction_type)).collect::<Vec<_>>()
+            rows.iter()
+                .map(|r| format!("{}/{}", r.stock_name, r.transaction_type))
+                .collect::<Vec<_>>()
         );
 
         // Verify a sample of expected values.
-        let maotai = rows.iter().find(|r| r.stock_name.contains("贵州茅台")).unwrap();
+        let maotai = rows
+            .iter()
+            .find(|r| r.stock_name.contains("贵州茅台"))
+            .unwrap();
         assert_eq!(maotai.transaction_type, "SELL");
-        assert!((maotai.price - 1459.48).abs() < 0.01, "maotai price={}", maotai.price);
+        assert!(
+            (maotai.price - 1459.48).abs() < 0.01,
+            "maotai price={}",
+            maotai.price
+        );
         assert!((maotai.shares - 100.0).abs() < 0.01);
         assert!(
             (maotai.total_amount - 1459.48 * 100.0).abs() < 1.0,
             "total={} expected={}",
-            maotai.total_amount, 1459.48 * 100.0
+            maotai.total_amount,
+            1459.48 * 100.0
         );
 
-        let zhaoshang = rows.iter().find(|r| r.stock_name.contains("招商银行")).unwrap();
+        let zhaoshang = rows
+            .iter()
+            .find(|r| r.stock_name.contains("招商银行"))
+            .unwrap();
         assert_eq!(zhaoshang.transaction_type, "BUY");
         assert!((zhaoshang.price - 28.95).abs() < 0.01);
         assert!((zhaoshang.shares - 2000.0).abs() < 0.01);
@@ -1753,7 +1825,11 @@ mod tests {
             // Determine which "stripe" this row belongs to.
             let stripe_h = card_h + sep_h;
             let local_y = y % stripe_h;
-            let color = if local_y < card_h { card_color } else { sep_color };
+            let color = if local_y < card_h {
+                card_color
+            } else {
+                sep_color
+            };
             for x in 0..width {
                 img.put_pixel(x, y, color);
             }
@@ -1778,14 +1854,24 @@ mod tests {
     fn test_split_two_cards_produces_two_slices() {
         let bytes = make_test_image_with_separators(2);
         let slices = split_image_by_separators(&bytes);
-        assert_eq!(slices.len(), 2, "expected 2 slices for 2-card image, got {}", slices.len());
+        assert_eq!(
+            slices.len(),
+            2,
+            "expected 2 slices for 2-card image, got {}",
+            slices.len()
+        );
     }
 
     #[test]
     fn test_split_six_cards_produces_six_slices() {
         let bytes = make_test_image_with_separators(6);
         let slices = split_image_by_separators(&bytes);
-        assert_eq!(slices.len(), 6, "expected 6 slices for 6-card image, got {}", slices.len());
+        assert_eq!(
+            slices.len(),
+            6,
+            "expected 6 slices for 6-card image, got {}",
+            slices.len()
+        );
     }
 
     #[test]
@@ -1817,8 +1903,14 @@ mod tests {
         let sep_color = Rgb([235u8, 235, 235]);
         for y in 0..total_h {
             let stripe = card_h + sep_h;
-            let col = if y % stripe < card_h { card_color } else { sep_color };
-            for x in 0..width { img.put_pixel(x, y, col); }
+            let col = if y % stripe < card_h {
+                card_color
+            } else {
+                sep_color
+            };
+            for x in 0..width {
+                img.put_pixel(x, y, col);
+            }
         }
         let mut buf: Vec<u8> = Vec::new();
         image::DynamicImage::ImageRgb8(img)
@@ -1827,7 +1919,12 @@ mod tests {
         let slices = split_image_by_separators(&buf);
         // Thin separators (< MIN_SEPARATOR_BAND_PX) should be ignored →
         // no cuts → falls back to returning the original image as a single slice.
-        assert_eq!(slices.len(), 1, "thin separators must not trigger slicing, got {} slices", slices.len());
+        assert_eq!(
+            slices.len(),
+            1,
+            "thin separators must not trigger slicing, got {} slices",
+            slices.len()
+        );
     }
 
     // ── pick_fields_no_total (Tier 4) ────────────────────────────────────────
@@ -1874,13 +1971,22 @@ mod tests {
 04-22 14:26              1500       5.60
 ";
         let rows = parse_ths_ocr(text);
-        assert_eq!(rows.len(), 1, "expected 1 BUY row, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            1,
+            "expected 1 BUY row, got {}: {rows:?}",
+            rows.len()
+        );
         let r = &rows[0];
         assert_eq!(r.transaction_type, "BUY");
         assert_eq!(r.stock_name, "招商银行");
         assert!((r.price - 39.680).abs() < 0.01, "price={}", r.price);
         assert!((r.shares - 1500.0).abs() < 0.01, "shares={}", r.shares);
-        assert!((r.total_amount - 39.680 * 1500.0).abs() < 1.0, "total={}", r.total_amount);
+        assert!(
+            (r.total_amount - 39.680 * 1500.0).abs() < 1.0,
+            "total={}",
+            r.total_amount
+        );
         assert!((r.commission - 5.60).abs() < 0.01, "comm={}", r.commission);
     }
 
@@ -1904,15 +2010,29 @@ mod tests {
 04-09 13:39              100       86.11
 ";
         let rows = parse_ths_ocr(text);
-        assert_eq!(rows.len(), 6, "expected 6 rows, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            6,
+            "expected 6 rows, got {}: {rows:?}",
+            rows.len()
+        );
 
-        let buys: Vec<_> = rows.iter().filter(|r| r.transaction_type == "BUY").collect();
-        let sells: Vec<_> = rows.iter().filter(|r| r.transaction_type == "SELL").collect();
+        let buys: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "BUY")
+            .collect();
+        let sells: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "SELL")
+            .collect();
         assert_eq!(buys.len(), 3, "expected 3 BUY rows");
         assert_eq!(sells.len(), 3, "expected 3 SELL rows");
 
         // Check the 贵州茅台 sell
-        let maotai = sells.iter().find(|r| r.stock_name.contains("贵州茅台")).unwrap();
+        let maotai = sells
+            .iter()
+            .find(|r| r.stock_name.contains("贵州茅台"))
+            .unwrap();
         assert!((maotai.price - 1459.480).abs() < 0.01);
         assert!((maotai.shares - 100.0).abs() < 0.01);
         assert!((maotai.total_amount - 1459.480 * 100.0).abs() < 1.0);
@@ -1920,14 +2040,24 @@ mod tests {
         // Check a 招商银行 buy — both 1500-share entries should be present
         // with their actual prices.  After chronological sort the 04-13 entry
         // (38.970) precedes the 04-22 entry (39.680), so use explicit find.
-        let zhaoshang_buy_0422 = buys.iter()
-            .find(|r| r.stock_name.contains("招商银行") && (r.shares - 1500.0).abs() < 1.0
-                && r.traded_at.contains("04-22"))
+        let zhaoshang_buy_0422 = buys
+            .iter()
+            .find(|r| {
+                r.stock_name.contains("招商银行")
+                    && (r.shares - 1500.0).abs() < 1.0
+                    && r.traded_at.contains("04-22")
+            })
             .expect("04-22 招商银行 1500-share buy not found");
-        assert!((zhaoshang_buy_0422.price - 39.680).abs() < 0.01,
-            "price={}", zhaoshang_buy_0422.price);
-        assert!((zhaoshang_buy_0422.commission - 5.60).abs() < 0.01,
-            "commission={}", zhaoshang_buy_0422.commission);
+        assert!(
+            (zhaoshang_buy_0422.price - 39.680).abs() < 0.01,
+            "price={}",
+            zhaoshang_buy_0422.price
+        );
+        assert!(
+            (zhaoshang_buy_0422.commission - 5.60).abs() < 0.01,
+            "commission={}",
+            zhaoshang_buy_0422.commission
+        );
     }
 
     /// End-to-end test using the EXACT Tesseract OCR text produced from our
@@ -1956,26 +2086,60 @@ V 2026-03                -151,661.89 -1.00%
 V 2026-02                 +74,518.99 +0.47%
 ";
         let rows = parse_ths_ocr(text);
-        assert_eq!(rows.len(), 6, "expected 6 rows from real tesseract output, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            6,
+            "expected 6 rows from real tesseract output, got {}: {rows:?}",
+            rows.len()
+        );
 
-        let buys:  Vec<_> = rows.iter().filter(|r| r.transaction_type == "BUY").collect();
-        let sells: Vec<_> = rows.iter().filter(|r| r.transaction_type == "SELL").collect();
-        assert_eq!(buys.len(),  3, "expected 3 BUY rows, got {buys:?}");
+        let buys: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "BUY")
+            .collect();
+        let sells: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "SELL")
+            .collect();
+        assert_eq!(buys.len(), 3, "expected 3 BUY rows, got {buys:?}");
         assert_eq!(sells.len(), 3, "expected 3 SELL rows, got {sells:?}");
 
         // Spot-check the 贵州茅台 sell
-        let maotai = sells.iter().find(|r| r.stock_name.contains("贵州茅台"))
+        let maotai = sells
+            .iter()
+            .find(|r| r.stock_name.contains("贵州茅台"))
             .expect("贵州茅台 SELL not found");
-        assert!((maotai.price  - 1459.480).abs() < 0.01, "maotai price={}", maotai.price);
-        assert!((maotai.shares - 100.0).abs()    < 0.01, "maotai shares={}", maotai.shares);
+        assert!(
+            (maotai.price - 1459.480).abs() < 0.01,
+            "maotai price={}",
+            maotai.price
+        );
+        assert!(
+            (maotai.shares - 100.0).abs() < 0.01,
+            "maotai shares={}",
+            maotai.shares
+        );
 
         // Spot-check the 04-22 招商银行 buy
-        let zhaoshang = buys.iter()
+        let zhaoshang = buys
+            .iter()
             .find(|r| r.stock_name.contains("招商银行") && r.traded_at.contains("04-22"))
             .expect("招商银行 BUY 04-22 not found");
-        assert!((zhaoshang.price  - 39.680).abs() < 0.01, "zhaoshang price={}", zhaoshang.price);
-        assert!((zhaoshang.shares - 1500.0).abs() < 0.01, "zhaoshang shares={}", zhaoshang.shares);
-        assert!((zhaoshang.commission - 5.60).abs() < 0.01, "zhaoshang commission={}", zhaoshang.commission);
+        assert!(
+            (zhaoshang.price - 39.680).abs() < 0.01,
+            "zhaoshang price={}",
+            zhaoshang.price
+        );
+        assert!(
+            (zhaoshang.shares - 1500.0).abs() < 0.01,
+            "zhaoshang shares={}",
+            zhaoshang.shares
+        );
+        assert!(
+            (zhaoshang.commission - 5.60).abs() < 0.01,
+            "zhaoshang commission={}",
+            zhaoshang.commission
+        );
     }
 
     #[test]
@@ -1986,10 +2150,10 @@ V 2026-02                 +74,518.99 +0.47%
         // NOT fire between "全" and a following ASCII digit; we check the raw byte
         // instead.
         let samples: &[(&str, bool)] = &[
-            ("全04.221425   1500   5.60", true),  // "04.22" m=4 d=22 ← CJK prefix
-            ("全04-22 14:26  1500  5.60", true),  // "04-22" m=4 d=22 ← CJK prefix
-            ("全04-1309:59  1500   5.58", true),  // "04-13" m=4 d=13 ← CJK prefix
-            ("39.680 full text", false),           // "39.68" m=39 → invalid
+            ("全04.221425   1500   5.60", true), // "04.22" m=4 d=22 ← CJK prefix
+            ("全04-22 14:26  1500  5.60", true), // "04-22" m=4 d=22 ← CJK prefix
+            ("全04-1309:59  1500   5.58", true), // "04-13" m=4 d=13 ← CJK prefix
+            ("39.680 full text", false),         // "39.68" m=39 → invalid
         ];
         let date_re = regex::Regex::new(r"(\d{1,2})[.-](\d{2})").unwrap();
         for (s, should_find) in samples {
@@ -1997,13 +2161,18 @@ V 2026-02                 +74,518.99 +0.47%
             let found = date_re.captures_iter(s).any(|cap| {
                 let start = cap.get(0).unwrap().start();
                 let preceded_by_digit = start > 0 && bytes[start - 1].is_ascii_digit();
-                if preceded_by_digit { return false; }
+                if preceded_by_digit {
+                    return false;
+                }
                 let m: u32 = cap[1].parse().unwrap_or(99);
                 let d: u32 = cap[2].parse().unwrap_or(99);
                 (1..=12).contains(&m) && (1..=31).contains(&d)
             });
-            assert_eq!(found, *should_find,
-                "date_re on '{}': found={found} want={should_find}", s);
+            assert_eq!(
+                found, *should_find,
+                "date_re on '{}': found={found} want={should_find}",
+                s
+            );
         }
     }
 
@@ -2040,18 +2209,30 @@ V 2026-04                          +270,742.49 +1.689%6
         let rows = parse_ths_ocr(text);
         // Expect 6 rows; 卖出-责州茅台 is a known OCR misread of 贵州茅台 — still
         // parsed as SELL.
-        assert_eq!(rows.len(), 6,
-            "expected 6 rows from 2× phone OCR output, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            6,
+            "expected 6 rows from 2× phone OCR output, got {}: {rows:?}",
+            rows.len()
+        );
 
-        let buys:  Vec<_> = rows.iter().filter(|r| r.transaction_type == "BUY").collect();
-        let sells: Vec<_> = rows.iter().filter(|r| r.transaction_type == "SELL").collect();
-        assert_eq!(buys.len(),  3, "expected 3 BUY, got {buys:?}");
+        let buys: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "BUY")
+            .collect();
+        let sells: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "SELL")
+            .collect();
+        assert_eq!(buys.len(), 3, "expected 3 BUY, got {buys:?}");
         assert_eq!(sells.len(), 3, "expected 3 SELL, got {sells:?}");
 
         // 04-22 buy: 招商银行, price=39.680, shares=1500, comm=5.60
-        let r = buys.iter().find(|r| r.traded_at.contains("04-22"))
+        let r = buys
+            .iter()
+            .find(|r| r.traded_at.contains("04-22"))
             .expect("04-22 BUY not found");
-        assert!((r.price  - 39.680).abs() < 0.01, "price={}", r.price);
+        assert!((r.price - 39.680).abs() < 0.01, "price={}", r.price);
         assert!((r.shares - 1500.0).abs() < 0.01, "shares={}", r.shares);
         assert!((r.commission - 5.60).abs() < 0.01, "comm={}", r.commission);
     }
@@ -2088,24 +2269,46 @@ V 2026.04           270.742.49 +1.6896
 全04091339                             100                  86.11
 ";
         let rows = parse_ths_ocr(text);
-        assert_eq!(rows.len(), 6,
-            "expected 6 rows from period-separator OCR, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            6,
+            "expected 6 rows from period-separator OCR, got {}: {rows:?}",
+            rows.len()
+        );
 
-        let buys:  Vec<_> = rows.iter().filter(|r| r.transaction_type == "BUY").collect();
-        let sells: Vec<_> = rows.iter().filter(|r| r.transaction_type == "SELL").collect();
-        assert_eq!(buys.len(),  3, "expected 3 BUY, got {buys:?}");
+        let buys: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "BUY")
+            .collect();
+        let sells: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "SELL")
+            .collect();
+        assert_eq!(buys.len(), 3, "expected 3 BUY, got {buys:?}");
         assert_eq!(sells.len(), 3, "expected 3 SELL, got {sells:?}");
 
         // Price must be extracted correctly from anchor line; shares from
         // the date row (may be approximate due to OCR garbling).
-        let r0 = buys.iter().find(|r| r.stock_name.contains("招商银行") && r.traded_at.contains("04-22"))
+        let r0 = buys
+            .iter()
+            .find(|r| r.stock_name.contains("招商银行") && r.traded_at.contains("04-22"))
             .expect("招商银行 04-22 BUY not found");
         assert!((r0.price - 39.680).abs() < 0.01, "price={}", r0.price);
-        assert!(r0.shares > 0.0, "shares must be positive, got {}", r0.shares);
+        assert!(
+            r0.shares > 0.0,
+            "shares must be positive, got {}",
+            r0.shares
+        );
 
-        let maotai = sells.iter().find(|r| r.stock_name.contains("贵州茅台"))
+        let maotai = sells
+            .iter()
+            .find(|r| r.stock_name.contains("贵州茅台"))
             .expect("贵州茅台 SELL not found");
-        assert!((maotai.price - 1459.480).abs() < 0.01, "maotai price={}", maotai.price);
+        assert!(
+            (maotai.price - 1459.480).abs() < 0.01,
+            "maotai price={}",
+            maotai.price
+        );
     }
 
     /// Test the dateline fallback using the EXACT Tesseract output from the
@@ -2143,25 +2346,47 @@ V 2026.04           270.742.49 +1.6896
 日2026-02
 ";
         let rows = parse_ths_ocr(text);
-        assert_eq!(rows.len(), 6,
-            "dateline fallback must produce 6 rows, got {}: {rows:?}", rows.len());
+        assert_eq!(
+            rows.len(),
+            6,
+            "dateline fallback must produce 6 rows, got {}: {rows:?}",
+            rows.len()
+        );
 
-        let buys:  Vec<_> = rows.iter().filter(|r| r.transaction_type == "BUY").collect();
-        let sells: Vec<_> = rows.iter().filter(|r| r.transaction_type == "SELL").collect();
-        assert_eq!(buys.len(),  3, "expected 3 BUY rows, got {buys:?}");
+        let buys: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "BUY")
+            .collect();
+        let sells: Vec<_> = rows
+            .iter()
+            .filter(|r| r.transaction_type == "SELL")
+            .collect();
+        assert_eq!(buys.len(), 3, "expected 3 BUY rows, got {buys:?}");
         assert_eq!(sells.len(), 3, "expected 3 SELL rows, got {sells:?}");
 
         // Spot-check 招商银行 04-22 buy
-        let r0 = buys.iter().find(|r| r.traded_at.contains("04-22"))
+        let r0 = buys
+            .iter()
+            .find(|r| r.traded_at.contains("04-22"))
             .expect("04-22 BUY not found");
-        assert!((r0.price  - 39.680).abs() < 0.01, "price={}", r0.price);
+        assert!((r0.price - 39.680).abs() < 0.01, "price={}", r0.price);
         assert!((r0.shares - 1500.0).abs() < 0.01, "shares={}", r0.shares);
         assert!(r0.transaction_type == "BUY");
 
         // Spot-check 贵州茅台 sell
-        let maotai = sells.iter().find(|r| r.price > 1000.0)
+        let maotai = sells
+            .iter()
+            .find(|r| r.price > 1000.0)
             .expect("贵州茅台 SELL (price>1000) not found");
-        assert!((maotai.price  - 1459.480).abs() < 0.01, "maotai price={}", maotai.price);
-        assert!((maotai.shares - 100.0).abs()    < 0.01, "maotai shares={}", maotai.shares);
+        assert!(
+            (maotai.price - 1459.480).abs() < 0.01,
+            "maotai price={}",
+            maotai.price
+        );
+        assert!(
+            (maotai.shares - 100.0).abs() < 0.01,
+            "maotai shares={}",
+            maotai.shares
+        );
     }
 }

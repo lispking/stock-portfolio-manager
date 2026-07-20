@@ -1,3 +1,4 @@
+pub mod ai_chat_service;
 pub mod ai_config_service;
 pub mod ai_models_service;
 pub mod alert_service;

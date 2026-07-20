@@ -10,7 +10,7 @@ use tauri::State;
 /// Returns (underlying, expiry_date, strike_price, option_type)
 /// Supports multi-word tickers (e.g. "BRK B") by parsing from the end.
 fn parse_option_symbol(symbol: &str) -> Result<(String, String, f64, String), String> {
-    let parts: Vec<&str> = symbol.trim().split_whitespace().collect();
+    let parts: Vec<&str> = symbol.split_whitespace().collect();
     if parts.len() < 4 {
         return Err(format!("Invalid option symbol: {}", symbol));
     }
@@ -284,8 +284,7 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
     );
 
     // Group by option_symbol
-    let mut groups: std::collections::HashMap<String, Vec<&Rec>> =
-        std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<String, Vec<&Rec>> = std::collections::HashMap::new();
     for r in &records {
         groups.entry(r.option_symbol.clone()).or_default().push(r);
     }
@@ -294,7 +293,7 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
     let mut orphan_closes: Vec<&Rec> = Vec::new();
 
     // Phase 1: same-symbol matching
-    for (_symbol, group_recs) in &groups {
+    for group_recs in groups.values() {
         let mut opens: Vec<&Rec> = group_recs
             .iter()
             .filter(|r| r.action == "SELL" && r.code.starts_with("O"))
@@ -305,8 +304,7 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
         let mut closes: Vec<&Rec> = group_recs
             .iter()
             .filter(|r| {
-                r.action == "BUY"
-                    && (r.code == "C;Ep" || r.code == "A;C" || r.code == "C;P")
+                r.action == "BUY" && (r.code == "C;Ep" || r.code == "A;C" || r.code == "C;P")
             })
             .copied()
             .collect();
@@ -381,9 +379,7 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
                     )
                     .map_err(|e| e.to_string())?;
                 let ids = stmt
-                    .query_map(rusqlite::params![account_id], |row| {
-                        row.get::<_, String>(0)
-                    })
+                    .query_map(rusqlite::params![account_id], |row| row.get::<_, String>(0))
                     .map_err(|e| e.to_string())?
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|e| e.to_string())?;
@@ -391,45 +387,69 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
             };
             let active_opens: Vec<&Rec> = records
                 .iter()
-                .filter(|r| r.action == "SELL" && r.code.starts_with("O")
-                    && active_open_ids.contains(&r.id))
+                .filter(|r| {
+                    r.action == "SELL" && r.code.starts_with("O") && active_open_ids.contains(&r.id)
+                })
                 .collect();
 
             // Parse helpers
             fn parse_expiry_ymd(e: &str) -> Option<(i32, u32, u32)> {
                 let months: std::collections::HashMap<&str, u32> = [
-                    ("JAN",1),("FEB",2),("MAR",3),("APR",4),("MAY",5),("JUN",6),
-                    ("JUL",7),("AUG",8),("SEP",9),("OCT",10),("NOV",11),("DEC",12),
-                ].iter().cloned().collect();
+                    ("JAN", 1),
+                    ("FEB", 2),
+                    ("MAR", 3),
+                    ("APR", 4),
+                    ("MAY", 5),
+                    ("JUN", 6),
+                    ("JUL", 7),
+                    ("AUG", 8),
+                    ("SEP", 9),
+                    ("OCT", 10),
+                    ("NOV", 11),
+                    ("DEC", 12),
+                ]
+                .iter()
+                .cloned()
+                .collect();
                 if e.len() >= 7 {
                     let day: u32 = e[0..2].parse().ok()?;
                     let mon: u32 = *months.get(&e[2..5].to_uppercase().as_str())?;
                     let yr: i32 = 2000 + e[5..7].parse::<i32>().ok()?;
                     Some((yr, mon, day))
-                } else { None }
+                } else {
+                    None
+                }
             }
 
             fn parse_split_ymd(s: &str) -> Option<(i32, u32, u32)> {
                 let parts: Vec<&str> = s.split('-').collect();
                 if parts.len() == 3 {
-                    Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
-                } else { None }
+                    Some((
+                        parts[0].parse().ok()?,
+                        parts[1].parse().ok()?,
+                        parts[2].parse().ok()?,
+                    ))
+                } else {
+                    None
+                }
             }
 
             for ao in &active_opens {
                 // Check if already matched (contract_status changed from 'active')
                 // We need to re-read status; for now check all active opens
                 'split_loop: for split in &splits {
-                    if split.stock_code != ao.underlying { continue; }
+                    if split.stock_code != ao.underlying {
+                        continue;
+                    }
                     let split_ymd = match parse_split_ymd(&split.split_date) {
-                        Some(d) => d, None => continue,
+                        Some(d) => d,
+                        None => continue,
                     };
                     let exp_ymd = match parse_expiry_ymd(&ao.expiry_date) {
-                        Some(d) => d, None => continue,
+                        Some(d) => d,
+                        None => continue,
                     };
-                    if (split_ymd.0, split_ymd.1, split_ymd.2)
-                        > (exp_ymd.0, exp_ymd.1, exp_ymd.2)
-                    {
+                    if (split_ymd.0, split_ymd.1, split_ymd.2) > (exp_ymd.0, exp_ymd.1, exp_ymd.2) {
                         continue;
                     }
 
@@ -496,8 +516,7 @@ pub fn get_expired_option_stats(
 ) -> Result<ExpiredOptionStats, String> {
     let contracts = get_option_contracts_inner(&db, &account_id)?;
 
-    let expired: Vec<&OptionContract> =
-        contracts.iter().filter(|c| c.status != "active").collect();
+    let expired: Vec<&OptionContract> = contracts.iter().filter(|c| c.status != "active").collect();
     let total = expired.len() as i64;
     let assigned = expired
         .iter()
@@ -728,10 +747,7 @@ pub fn delete_option_records(db: State<Database>, account_id: String) -> Result<
 /// Export option records as CSV string.
 /// The output CSV uses the same format as the import CSV for round-trip compatibility.
 #[tauri::command(rename_all = "camelCase")]
-pub fn export_options_csv(
-    db: State<Database>,
-    account_id: String,
-) -> Result<String, String> {
+pub fn export_options_csv(db: State<Database>, account_id: String) -> Result<String, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
@@ -744,16 +760,16 @@ pub fn export_options_csv(
     let rows = stmt
         .query_map(rusqlite::params![account_id], |row| {
             Ok((
-                row.get::<_, String>(0)?,                       // option_symbol
-                row.get::<_, Option<String>>(1)?,               // traded_at
-                row.get::<_, Option<String>>(2)?,               // settled_at
-                row.get::<_, String>(3)?,                       // action
-                row.get::<_, i64>(4)?,                          // quantity
-                row.get::<_, f64>(5)?,                          // price
-                row.get::<_, f64>(6)?,                          // amount
-                row.get::<_, f64>(7)?,                          // commission
-                row.get::<_, f64>(8)?,                          // fee
-                row.get::<_, String>(9)?,                       // code
+                row.get::<_, String>(0)?,         // option_symbol
+                row.get::<_, Option<String>>(1)?, // traded_at
+                row.get::<_, Option<String>>(2)?, // settled_at
+                row.get::<_, String>(3)?,         // action
+                row.get::<_, i64>(4)?,            // quantity
+                row.get::<_, f64>(5)?,            // price
+                row.get::<_, f64>(6)?,            // amount
+                row.get::<_, f64>(7)?,            // commission
+                row.get::<_, f64>(8)?,            // fee
+                row.get::<_, String>(9)?,         // code
             ))
         })
         .map_err(|e| e.to_string())?;
@@ -764,8 +780,17 @@ pub fn export_options_csv(
         .from_writer(Vec::new());
 
     // Write header row
-    wtr.write_record(&[
-        "股票", "交易时间", "交割时间", "操作", "股票数量", "价格", "金额", "佣金", "费用", "代码",
+    wtr.write_record([
+        "股票",
+        "交易时间",
+        "交割时间",
+        "操作",
+        "股票数量",
+        "价格",
+        "金额",
+        "佣金",
+        "费用",
+        "代码",
     ])
     .map_err(|e| e.to_string())?;
 
@@ -801,9 +826,7 @@ pub fn parse_options_csv(
     use crate::models::import_export::{ImportError, ImportPreview};
     use std::collections::HashMap;
 
-    let content = csv_content
-        .strip_prefix('\u{feff}')
-        .unwrap_or(&csv_content);
+    let content = csv_content.strip_prefix('\u{feff}').unwrap_or(&csv_content);
 
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -854,7 +877,15 @@ pub fn parse_options_csv(
         let option_symbol = match get_field(
             &record,
             &headers,
-            &["股票", "股票代码", "合约", "期权", "期权代码", "symbol", "Symbol"],
+            &[
+                "股票",
+                "股票代码",
+                "合约",
+                "期权",
+                "期权代码",
+                "symbol",
+                "Symbol",
+            ],
         ) {
             Some(s) if !s.is_empty() => s,
             _ => {
@@ -1099,7 +1130,7 @@ fn get_option_contracts_inner(
 
     let mut contracts: Vec<OptionContract> = Vec::new();
 
-    for (_symbol, recs) in &grouped {
+    for recs in grouped.values() {
         // Open records (SELL + code starts with "O")
         let mut opens: Vec<&OptionRecord> = recs
             .iter()
@@ -1115,8 +1146,7 @@ fn get_option_contracts_inner(
         let mut closes: Vec<&OptionRecord> = recs
             .iter()
             .filter(|r| {
-                r.action == "BUY"
-                    && (r.code == "C;Ep" || r.code == "A;C" || r.code == "C;P")
+                r.action == "BUY" && (r.code == "C;Ep" || r.code == "A;C" || r.code == "C;P")
             })
             .collect();
         closes.sort_by(|a, b| a.traded_at.cmp(&b.traded_at));
