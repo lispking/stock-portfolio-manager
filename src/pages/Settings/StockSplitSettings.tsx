@@ -116,7 +116,7 @@ export default function StockSplitSettings() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Card
         title="拆股管理"
         extra={

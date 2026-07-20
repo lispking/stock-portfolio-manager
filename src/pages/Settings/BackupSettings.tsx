@@ -115,7 +115,7 @@ export default function BackupSettings() {
   };
 
   return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Title level={4}>💾 SQLite 备份</Title>
       <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
         将数据库文件备份到指定目录（如 NAS、共享文件夹等），防止数据丢失。
@@ -124,13 +124,12 @@ export default function BackupSettings() {
       <Alert
         type="info"
         showIcon
-        className="mb-4"
         message="还原备份"
         description="将备份的 .db 文件复制到应用数据目录，覆盖 portfolio.db 文件后重启应用即可还原。"
       />
 
       {/* 备份目录设置 */}
-      <Card size="small" title="📁 备份目录" className="mb-3">
+      <Card size="small" title="📁 备份目录">
         <Space>
           <Input
             value={config?.directory ?? ""}
@@ -151,7 +150,7 @@ export default function BackupSettings() {
       </Card>
 
       {/* 定期备份 */}
-      <Card size="small" title="⏰ 定期备份" className="mb-3">
+      <Card size="small" title="⏰ 定期备份">
         <Space>
           <Switch
             checked={config?.auto_backup ?? false}

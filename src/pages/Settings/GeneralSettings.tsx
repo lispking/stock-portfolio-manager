@@ -179,7 +179,7 @@ export default function GeneralSettings() {
     providerConfig.cn_provider === "xueqiu";
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {isXueqiuUsed && (
         <Card
           title="雪球 Cookie 设置"

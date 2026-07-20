@@ -37,7 +37,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Title level={2}>
         <SettingOutlined /> 设置
       </Title>
