@@ -70,7 +70,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
             <Statistic
               title={`总盈亏 (${baseCurrency})`}
               value={`${totalPnlPos ? "+" : ""}${overview.total_pnl.toFixed(2)}`}
-              valueStyle={{ color: pnlColor(overview.total_pnl) }}
+              styles={{ content: {  color: pnlColor(overview.total_pnl)  } }}
               prefix={symbol}
               suffix={`(${totalPnlPos ? "+" : ""}${overview.total_pnl_percent.toFixed(2)}%)`}
             />

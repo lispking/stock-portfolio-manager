@@ -19,6 +19,7 @@ import {
   ReloadOutlined,
   EditOutlined,
   InfoCircleOutlined,
+  UndoOutlined,
 } from "@ant-design/icons";
 import { useAiStore } from "../../stores/aiStore";
 import type { AiModelInfo, AiProvider } from "../../types";
@@ -85,6 +86,14 @@ const PROVIDERS: ProviderOption[] = [
     needs_key: true,
     key_placeholder: "sk-...",
   },
+  {
+    value: "deepseek",
+    label: "DeepSeek（深度求索）",
+    hint: "DeepSeek 官方 API，OpenAI 兼容",
+    default_base_url: "https://api.deepseek.com",
+    needs_key: true,
+    key_placeholder: "sk-...",
+  },
 ];
 
 function providerOf(value: string): ProviderOption | undefined {
@@ -92,7 +101,7 @@ function providerOf(value: string): ProviderOption | undefined {
 }
 
 export default function AIPage() {
-  const { config, loading, fetchConfig, updateConfig, fetchModels } =
+  const { config, loading, fetchConfig, updateConfig, fetchModels, getDefaultSystemPrompt } =
     useAiStore();
   const [form] = Form.useForm();
   const [models, setModels] = useState<AiModelInfo[]>([]);
@@ -102,6 +111,16 @@ export default function AIPage() {
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
+
+  const handleRestorePrompt = async () => {
+    try {
+      const def = await getDefaultSystemPrompt();
+      form.setFieldValue("system_prompt", def);
+      message.success("已恢复默认提示词（需点击保存生效）");
+    } catch (err) {
+      message.error("恢复失败：" + String(err));
+    }
+  };
 
   useEffect(() => {
     if (config) {
@@ -211,8 +230,8 @@ export default function AIPage() {
 
       <Alert
         type="info"
-        message="实验性功能"
-        description="支持 OpenAI、Ollama、OpenRouter 以及 Kimi、GLM（智谱）、MiMo（小米）等主流服务。填写 API Key 后可自动获取可用模型列表，获取失败时也可手动输入。API Key 仅本地存储，不会上传。使用前请确保 API Key 有效，并了解相关费用。"
+        title="实验性功能"
+        description="支持 OpenAI、Ollama、OpenRouter 以及 Kimi、GLM（智谱）、MiMo（小米）、DeepSeek 等主流服务。填写 API Key 后可自动获取可用模型列表，获取失败时也可手动输入。API Key 仅本地存储，不会上传。使用前请确保 API Key 有效，并了解相关费用。"
         showIcon
       />
 
@@ -324,8 +343,33 @@ export default function AIPage() {
             )}
           </Form.Item>
 
-          <Form.Item name="system_prompt" label="系统提示词">
-            <TextArea rows={4} placeholder="你是一位专业的投资顾问..." />
+          <Form.Item
+            name="system_prompt"
+            label={
+              <Space
+                style={{ justifyContent: "space-between", width: "100%" }}
+              >
+                <span>系统提示词</span>
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<UndoOutlined />}
+                  onClick={handleRestorePrompt}
+                >
+                  恢复默认
+                </Button>
+              </Space>
+            }
+            extra={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                定义 AI 的角色、职责与回答风格。AI 会自动收到一份当前持仓与绩效的快照作为上下文，无需在此重复填写。
+              </Text>
+            }
+          >
+            <TextArea
+              rows={10}
+              placeholder="例如：你是一位经验丰富、客观中立的个人投资组合分析助手..."
+            />
           </Form.Item>
 
           <Form.Item>

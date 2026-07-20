@@ -766,7 +766,7 @@ export default function ImportFromIbCsvModal({
           {parseError && (
             <Alert
               type="error"
-              message={parseError}
+              title={parseError}
               className="mt-3"
               showIcon
             />
@@ -775,7 +775,7 @@ export default function ImportFromIbCsvModal({
             type="info"
             className="mt-3"
             showIcon
-            message="仅支持 Interactive Brokers 活动报表（Activity Statement）CSV 格式"
+            title="仅支持 Interactive Brokers 活动报表（Activity Statement）CSV 格式"
             description={
               <span>
                 账户市场：<strong>{market === "HK" ? "港股 (HKD)" : "美股 (USD)"}</strong>
@@ -792,13 +792,13 @@ export default function ImportFromIbCsvModal({
           <Alert
             type="info"
             showIcon
-            message={`账户「${account.name}」[${market}]，市场和货币已自动设置为 ${market} / ${currency}`}
+            title={`账户「${account.name}」[${market}]，市场和货币已自动设置为 ${market} / ${currency}`}
             className="mb-3"
           />
           <Alert
             type="warning"
             showIcon
-            message="请核对以下数据，可直接在表格中编辑。确认后点击「导入选中记录」。"
+            title="请核对以下数据，可直接在表格中编辑。确认后点击「导入选中记录」。"
             className="mb-3"
           />
           <Table
@@ -823,7 +823,7 @@ export default function ImportFromIbCsvModal({
             <Alert
               type="success"
               showIcon
-              message={`成功导入 ${importResult.success} 条交易记录`}
+              title={`成功导入 ${importResult.success} 条交易记录`}
               className="mb-3"
             />
           )}
@@ -831,7 +831,7 @@ export default function ImportFromIbCsvModal({
             <Alert
               type="error"
               showIcon
-              message={`${importResult.failed} 条导入失败`}
+              title={`${importResult.failed} 条导入失败`}
               description={
                 <ul className="mt-1 pl-4">
                   {importResult.errors.map((e, i) => (

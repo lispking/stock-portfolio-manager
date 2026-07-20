@@ -469,7 +469,7 @@ export default function OptionsPage() {
               value={activePremiumStats.total}
               prefix="$"
               precision={0}
-              valueStyle={{ color: "#3f8600" }}
+              styles={{ content: {  color: "#3f8600"  } }}
             />
           </Card>
         </Col>
@@ -480,7 +480,7 @@ export default function OptionsPage() {
               value={activePremiumStats.last90}
               prefix="$"
               precision={0}
-              valueStyle={{ color: "#3f8600" }}
+              styles={{ content: {  color: "#3f8600"  } }}
             />
           </Card>
         </Col>
@@ -491,7 +491,7 @@ export default function OptionsPage() {
               value={activePremiumStats.last60}
               prefix="$"
               precision={0}
-              valueStyle={{ color: "#3f8600" }}
+              styles={{ content: {  color: "#3f8600"  } }}
             />
           </Card>
         </Col>
@@ -502,7 +502,7 @@ export default function OptionsPage() {
               value={activePremiumStats.last30}
               prefix="$"
               precision={0}
-              valueStyle={{ color: "#3f8600" }}
+              styles={{ content: {  color: "#3f8600"  } }}
             />
           </Card>
         </Col>
@@ -730,7 +730,7 @@ export default function OptionsPage() {
                 value={expiredTotalPremium}
                 prefix="$"
                 precision={0}
-                valueStyle={{ color: "#3f8600" }}
+                styles={{ content: {  color: "#3f8600"  } }}
               />
             </Card>
           </Col>
@@ -744,7 +744,7 @@ export default function OptionsPage() {
               <Statistic
                 title="被执行合约"
                 value={expiredStats.assigned_contracts}
-                valueStyle={{ color: "#cf1322" }}
+                styles={{ content: {  color: "#cf1322"  } }}
               />
             </Card>
           </Col>
@@ -753,7 +753,7 @@ export default function OptionsPage() {
               <Statistic
                 title="到期作废合约"
                 value={expiredStats.expired_contracts}
-                valueStyle={{ color: "#3f8600" }}
+                styles={{ content: {  color: "#3f8600"  } }}
               />
             </Card>
           </Col>
@@ -901,7 +901,7 @@ export default function OptionsPage() {
 
       {!selectedAccountId && (
         <Alert
-          message="请先选择证券账户"
+          title="请先选择证券账户"
           description="选择一个证券账户后，可以导入期权CSV记录并查看期权合约状态。"
           type="info"
           showIcon

@@ -602,13 +602,13 @@ export default function ImportFromFirstradeCsvModal({
             </p>
           </Dragger>
           {parseError && (
-            <Alert type="error" message={parseError} className="mt-3" showIcon />
+            <Alert type="error" title={parseError} className="mt-3" showIcon />
           )}
           <Alert
             type="info"
             className="mt-3"
             showIcon
-            message="仅支持 Firstrade 交易记录 CSV 格式"
+            title="仅支持 Firstrade 交易记录 CSV 格式"
             description={
               <span>
                 仅导入 <strong>BUY</strong>/<strong>SELL</strong> 类型的交易记录，
@@ -626,13 +626,13 @@ export default function ImportFromFirstradeCsvModal({
           <Alert
             type="info"
             showIcon
-            message={`账户「${account.name}」[US]，市场和货币已自动设置为 US / USD`}
+            title={`账户「${account.name}」[US]，市场和货币已自动设置为 US / USD`}
             className="mb-3"
           />
           <Alert
             type="warning"
             showIcon
-            message="请核对以下数据，可直接在表格中编辑。确认后点击「导入选中记录」。"
+            title="请核对以下数据，可直接在表格中编辑。确认后点击「导入选中记录」。"
             className="mb-3"
           />
           <Table
@@ -656,7 +656,7 @@ export default function ImportFromFirstradeCsvModal({
             <Alert
               type="success"
               showIcon
-              message={`成功导入 ${importResult.success} 条交易记录`}
+              title={`成功导入 ${importResult.success} 条交易记录`}
               className="mb-3"
             />
           )}
@@ -664,7 +664,7 @@ export default function ImportFromFirstradeCsvModal({
             <Alert
               type="error"
               showIcon
-              message={`${importResult.failed} 条导入失败`}
+              title={`${importResult.failed} 条导入失败`}
               description={
                 <ul className="mt-1 pl-4">
                   {importResult.errors.map((e, idx) => (

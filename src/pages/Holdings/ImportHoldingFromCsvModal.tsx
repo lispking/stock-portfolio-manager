@@ -545,7 +545,7 @@ export default function ImportHoldingFromCsvModal({
           <Alert
             type="info"
             className="mb-4"
-            message="支持以下A股券商导出格式"
+            title="支持以下A股券商导出格式"
             description={
               <ul style={{ paddingLeft: 16, marginTop: 4, marginBottom: 0 }}>
                 <li>
@@ -584,12 +584,12 @@ export default function ImportHoldingFromCsvModal({
       {step === 1 && (
         <div>
           {parseWarnings.map((w, i) => (
-            <Alert key={i} type="warning" message={w} className="mb-2" showIcon />
+            <Alert key={i} type="warning" title={w} className="mb-2" showIcon />
           ))}
           {rows.length === 0 ? (
             <Alert
               type="error"
-              message="未能解析到任何持仓数据，请检查CSV文件格式是否符合要求"
+              title="未能解析到任何持仓数据，请检查CSV文件格式是否符合要求"
             />
           ) : (
             <>
@@ -627,7 +627,7 @@ export default function ImportHoldingFromCsvModal({
         <div>
           <Alert
             type={importResult.failed === 0 ? "success" : "warning"}
-            message={`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`}
+            title={`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`}
             className="mb-4"
           />
           {importResult.errors.length > 0 && (
@@ -636,7 +636,7 @@ export default function ImportHoldingFromCsvModal({
                 <Alert
                   key={i}
                   type="error"
-                  message={`${e.name}: ${e.error}`}
+                  title={`${e.name}: ${e.error}`}
                   className="mb-1"
                   showIcon
                 />

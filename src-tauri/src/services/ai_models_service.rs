@@ -34,7 +34,7 @@ struct OpenAiModel {
 ///
 /// `user_base` overrides everything when provided. Otherwise we fall back to
 /// per-provider well-known defaults. Trailing slashes are stripped.
-fn resolve_base_url(provider: &str, user_base: Option<&str>) -> Result<String, String> {
+pub(crate) fn resolve_base_url(provider: &str, user_base: Option<&str>) -> Result<String, String> {
     if let Some(b) = user_base.map(str::trim).filter(|s| !s.is_empty()) {
         return Ok(b.trim_end_matches('/').to_string());
     }
@@ -45,6 +45,7 @@ fn resolve_base_url(provider: &str, user_base: Option<&str>) -> Result<String, S
         "kimi" | "moonshot" => Ok("https://api.moonshot.ai/v1".to_string()),
         "glm" | "zhipu" => Ok("https://open.bigmodel.cn/api/paas/v4".to_string()),
         "mimo" | "xiaomi" => Ok("https://api.xiaomimimo.com/v1".to_string()),
+        "deepseek" => Ok("https://api.deepseek.com".to_string()),
         other => Err(format!("未知的服务商：{other}，请填写 Base URL")),
     }
 }

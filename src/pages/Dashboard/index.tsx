@@ -103,7 +103,7 @@ export default function DashboardPage() {
           >
             {ratesError && (
               <Alert
-                message="汇率获取失败，请检查网络连接"
+                title="汇率获取失败，请检查网络连接"
                 type="warning"
                 showIcon
                 style={{ marginBottom: 16 }}

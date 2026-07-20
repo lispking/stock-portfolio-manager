@@ -234,7 +234,21 @@ pub fn run() {
             // Phase 6: AI Config
             commands::ai::get_ai_config,
             commands::ai::update_ai_config,
+            commands::ai::get_default_system_prompt,
             commands::ai::fetch_ai_models,
+            // AI Assistant (streaming chat)
+            commands::ai::chat_with_ai,
+            commands::ai::stop_ai_chat,
+            // AI chat sessions & persisted messages
+            commands::chat_sessions::create_chat_session,
+            commands::chat_sessions::get_chat_sessions,
+            commands::chat_sessions::rename_chat_session,
+            commands::chat_sessions::delete_chat_session,
+            commands::chat_sessions::touch_chat_session,
+            commands::chat_sessions::get_chat_messages,
+            commands::chat_sessions::save_chat_messages,
+            commands::chat_sessions::clear_chat_session,
+            commands::chat_sessions::generate_session_title,
             // Quote Provider Config
             commands::quote_provider::get_quote_provider_config,
             commands::quote_provider::update_quote_provider_config,
