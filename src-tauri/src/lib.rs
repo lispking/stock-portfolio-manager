@@ -237,6 +237,8 @@ pub fn run() {
             // Quote Provider Config
             commands::quote_provider::get_quote_provider_config,
             commands::quote_provider::update_quote_provider_config,
+            commands::quote_provider::capture_xueqiu_cookies,
+            commands::quote_provider::parse_xueqiu_cookie_text,
             // OCR: import trades from 同花顺 screenshots
             commands::ocr::parse_trade_image,
             commands::ocr::lookup_cn_stock_code,

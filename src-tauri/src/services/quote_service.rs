@@ -870,7 +870,11 @@ async fn ensure_xueqiu_token() -> Result<(), String> {
 }
 
 /// Reset the Xueqiu session token so that the next API call will re-fetch it.
-fn reset_xueqiu_token() {
+///
+/// Made `pub` so that callers which overwrite the user-provided cookie (e.g.
+/// the embedded login flow and the paste-cookie command) can force the next
+/// request to use the freshly stored value instead of any cached state.
+pub fn reset_xueqiu_token() {
     XUEQIU_TOKEN_INITIALIZED.store(false, Ordering::SeqCst);
     *XUEQIU_AUTO_COOKIE.lock().unwrap() = None;
 }

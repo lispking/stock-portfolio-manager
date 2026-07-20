@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Card, Checkbox, Form, Input, Radio, Select, Typography, message } from "antd";
+import { useCallback, useEffect, useState } from "react";
+import { Button, Card, Checkbox, Form, Input, Radio, Select, Space, Tabs, Typography, message } from "antd";
 import { invoke } from "@tauri-apps/api/core";
 import { useQuoteStore } from "../../stores/quoteStore";
 import { useSettingsStore, type ColorScheme } from "../../stores/settingsStore";
+import { useXueqiuLogin } from "../../hooks/useXueqiuLogin";
 import type { QuoteProviderConfig } from "../../types";
 
 const { Paragraph } = Typography;
@@ -46,6 +47,20 @@ export default function GeneralSettings() {
     hk_adjust_sell_pay_cost: false,
   });
   const [recalculating, setRecalculating] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [pastingRaw, setPastingRaw] = useState("");
+  const [parsing, setParsing] = useState(false);
+
+  // Single source of truth for "capture succeeded": both the explicit button
+  // and the auto-capture-on-close path flow through here, so the toast fires
+  // exactly once per capture regardless of how many component instances or
+  // StrictMode remounts exist.
+  const handleCaptured = useCallback((config: QuoteProviderConfig) => {
+    setProviderConfig(config);
+    message.success("已从雪球登录会话抓取 Cookie 并保存");
+  }, []);
+  const { loginWindowOpen, openLoginWindow, capture } =
+    useXueqiuLogin(handleCaptured);
 
   useEffect(() => {
     invoke<QuoteProviderConfig>("get_quote_provider_config")
@@ -96,6 +111,49 @@ export default function GeneralSettings() {
     }
   };
 
+  const handleOpenLoginWindow = async () => {
+    try {
+      await openLoginWindow();
+      message.info("已打开雪球登录窗口，请在新窗口内完成登录后再点击「我已登录，抓取 Cookie」");
+    } catch (err) {
+      message.error("打开登录窗口失败: " + String(err));
+    }
+  };
+
+  const handleCapture = async () => {
+    setCapturing(true);
+    try {
+      // capture() fires `handleCaptured` on success, which sets state and
+      // shows the toast — so we deliberately don't duplicate that here.
+      await capture();
+    } catch (err) {
+      message.error(String(err));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const handleParsePaste = async () => {
+    if (!pastingRaw.trim()) {
+      message.warning("请先粘贴 Cookie 内容");
+      return;
+    }
+    setParsing(true);
+    try {
+      const updated = await invoke<QuoteProviderConfig>(
+        "parse_xueqiu_cookie_text",
+        { raw: pastingRaw, existing: providerConfig }
+      );
+      setProviderConfig(updated);
+      setPastingRaw("");
+      message.success("已解析 Cookie 并保存");
+    } catch (err) {
+      message.error(String(err));
+    } finally {
+      setParsing(false);
+    }
+  };
+
   const handleCostAdjustChange = async (
     key: "cn_adjust_sell_pay_cost" | "us_adjust_sell_pay_cost" | "hk_adjust_sell_pay_cost",
     checked: boolean
@@ -123,38 +181,107 @@ export default function GeneralSettings() {
   return (
     <div className="space-y-6">
       {isXueqiuUsed && (
-        <Card title="雪球 Cookie 设置">
-          <Form layout="vertical" style={{ maxWidth: 540 }}>
-            <Form.Item
-              label="雪球访问 Cookie (xq_a_token)"
-              extra="浏览器登录 xueqiu.com → F12 → Application → Cookies → 复制 xq_a_token 的值"
-            >
-              <Input
-                placeholder="例如：xq_a_token=6a7dc04b2c6770dc8e..."
-                value={providerConfig.xueqiu_cookie ?? ""}
-                onChange={(e) =>
-                  setProviderConfig({ ...providerConfig, xueqiu_cookie: e.target.value || null })
-                }
-                onBlur={(e) => handleCookieSave(e.target.value)}
-              />
-            </Form.Item>
-            <Form.Item
-              label="雪球用户 ID (u)"
-              extra="同上位置，找到 u 的值"
-            >
-              <Input
-                placeholder="例如：9095890697"
-                value={providerConfig.xueqiu_u ?? ""}
-                onChange={(e) =>
-                  setProviderConfig({ ...providerConfig, xueqiu_u: e.target.value || null })
-                }
-                onBlur={(e) => handleUValueSave(e.target.value)}
-              />
-            </Form.Item>
-          </Form>
-          <Paragraph type="secondary">
-            雪球历史行情 API 需要访问 Cookie 和用户 ID 才能获取数据。两者都需要填写。雪球访问 Cookie 可能会过期，届时需要重新获取。
-          </Paragraph>
+        <Card
+          title="雪球 Cookie 设置"
+          extra={
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              Cookie 会过期，届时用任意一种方式重新获取即可
+            </Typography.Text>
+          }
+          styles={{ body: { paddingTop: 12 } }}
+        >
+          <Tabs
+            defaultActiveKey="login"
+            items={[
+              {
+                key: "login",
+                label: "一键登录",
+                children: (
+                  <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                    <Space>
+                      <Button onClick={handleOpenLoginWindow}>
+                        {loginWindowOpen ? "已打开登录窗口，去登录" : "一键登录雪球"}
+                      </Button>
+                      <Button
+                        type="primary"
+                        onClick={handleCapture}
+                        loading={capturing}
+                        disabled={!loginWindowOpen}
+                      >
+                        我已登录，抓取 Cookie
+                      </Button>
+                    </Space>
+                    <Typography.Text type="secondary">
+                      点击「一键登录雪球」会在独立窗口打开雪球网站，在该窗口内完成登录（扫码 / 账号密码）后，回到本页面点击「我已登录，抓取 Cookie」即可自动获取。Cookie 过期后可重复执行此操作。
+                    </Typography.Text>
+                  </Space>
+                ),
+              },
+              {
+                key: "paste",
+                label: "粘贴 Cookie",
+                children: (
+                  <Form layout="vertical">
+                    <Form.Item
+                      extra="在浏览器登录 xueqiu.com 后，F12 → Network → 任一请求 → Headers → 复制 Cookie 一整行（含 xq_a_token=...; u=...）"
+                    >
+                      <Input.TextArea
+                        rows={3}
+                        placeholder="例如：xq_a_token=6a7dc04b2c6770dc8e...; u=9095890697; ..."
+                        value={pastingRaw}
+                        onChange={(e) => setPastingRaw(e.target.value)}
+                      />
+                      <Button
+                        style={{ marginTop: 8 }}
+                        onClick={handleParsePaste}
+                        loading={parsing}
+                      >
+                        解析并保存
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                ),
+              },
+              {
+                key: "manual",
+                label: "手动填写",
+                children: (
+                  <Form layout="vertical">
+                    <Form.Item
+                      extra="浏览器登录 xueqiu.com → F12 → Application → Cookies → 分别复制 xq_a_token 和 u 的值"
+                    >
+                      <Space direction="vertical" style={{ width: "100%" }} size="small">
+                        <Input
+                          addonBefore="xq_a_token"
+                          placeholder="6a7dc04b2c6770dc8e..."
+                          value={providerConfig.xueqiu_cookie ?? ""}
+                          onChange={(e) =>
+                            setProviderConfig({
+                              ...providerConfig,
+                              xueqiu_cookie: e.target.value || null,
+                            })
+                          }
+                          onBlur={(e) => handleCookieSave(e.target.value)}
+                        />
+                        <Input
+                          addonBefore="u"
+                          placeholder="9095890697"
+                          value={providerConfig.xueqiu_u ?? ""}
+                          onChange={(e) =>
+                            setProviderConfig({
+                              ...providerConfig,
+                              xueqiu_u: e.target.value || null,
+                            })
+                          }
+                          onBlur={(e) => handleUValueSave(e.target.value)}
+                        />
+                      </Space>
+                    </Form.Item>
+                  </Form>
+                ),
+              },
+            ]}
+          />
         </Card>
       )}
 
