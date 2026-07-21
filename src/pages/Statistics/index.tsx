@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Typography, Tabs, Button, Select } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { useStatisticsStore } from "../../stores/dashboardStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { useCategoryStore } from "../../stores/categoryStore";
@@ -38,7 +39,7 @@ export default function StatisticsPage() {
   const { accounts, fetchAccounts } = useAccountStore();
   const { categories, fetchCategories } = useCategoryStore();
   const { holdings, fetchHoldings } = useHoldingStore();
-  const { fetchHoldingQuotes } = useQuoteStore();
+  const { fetchHoldingQuotes, lastUpdatedAt } = useQuoteStore();
 
   // Derive available markets from holdings
   const availableMarkets = useMemo(() => {
@@ -198,6 +199,13 @@ export default function StatisticsPage() {
         onChange={setActiveTab}
         items={tabs}
         destroyOnHidden={false}
+        tabBarExtraContent={
+          lastUpdatedAt ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              行情数据更新于 {dayjs(lastUpdatedAt).format("YYYY-MM-DD HH:mm:ss")}
+            </Text>
+          ) : null
+        }
       />
     </div>
   );

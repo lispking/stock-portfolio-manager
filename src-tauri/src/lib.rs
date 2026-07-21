@@ -146,6 +146,7 @@ pub fn run() {
                     Ok(quotes) => {
                         // Persist the freshly fetched quotes to the database.
                         let _ = services::quote_service::save_quotes_to_db(&db, &quotes);
+                        let _ = services::quote_service::save_quote_refresh_time(&db);
                         // Peek at any warning (without consuming it) so we can
                         // include it in the quote-warning event.  The warning stays
                         // in LAST_QUOTE_WARNING so the frontend's take_quote_warning
@@ -187,6 +188,7 @@ pub fn run() {
             commands::quotes::get_hk_quote,
             commands::quotes::get_cn_quote,
             commands::quotes::take_quote_warning,
+            commands::quotes::get_last_quote_refresh_time,
             commands::exchange_rates::get_exchange_rates,
             commands::exchange_rates::convert_amount,
             commands::snapshots::take_snapshot,

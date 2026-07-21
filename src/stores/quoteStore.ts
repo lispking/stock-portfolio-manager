@@ -42,6 +42,9 @@ interface QuoteState {
 }
 
 export const useQuoteStore = create<QuoteState>((set, get) => ({
+  // NOTE: lastUpdatedAt is initially null. Module-level code below fires an
+  // async call to load the persisted timestamp from the backend DB so the UI
+  // shows the correct value even on first render / after a restart.
   holdingQuotes: [],
   quotes: {},
   loading: false,
@@ -128,6 +131,7 @@ export const useQuoteStore = create<QuoteState>((set, get) => ({
 
   startAutoRefresh: () => {
     const { fetchHoldingQuotes } = get();
+
     // Load holdings with DB-cached quotes only (no API calls).
     // The backend spawns a background task on startup to refresh the cache
     // from upstream APIs and emits a "quotes-refreshed" event when done.
@@ -156,3 +160,15 @@ export const useQuoteStore = create<QuoteState>((set, get) => ({
     };
   },
 }));
+
+// Load the persisted last quote refresh time from the database at module
+// initialization time so any page (dashboard, statistics, holdings) sees the
+// correct timestamp immediately after a restart, even if startAutoRefresh has
+// not been called yet. Runs once when this module is first imported.
+invoke<string | null>("get_last_quote_refresh_time")
+  .then((ts) => {
+    if (ts) useQuoteStore.setState({ lastUpdatedAt: ts });
+  })
+  .catch(() => {
+    // Ignore errors – the UI shows no timestamp until the first refresh.
+  });

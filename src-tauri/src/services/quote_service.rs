@@ -216,6 +216,31 @@ pub fn save_quotes_to_db(db: &Database, quotes: &[StockQuote]) -> Result<(), Str
     Ok(())
 }
 
+/// Persist the last quote refresh timestamp to the database (single-row upsert, id=1).
+pub fn save_quote_refresh_time(db: &Database) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR REPLACE INTO cached_quote_refresh_time (id, updated_at) VALUES (1, ?1)",
+        rusqlite::params![now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Load the persisted last quote refresh timestamp from the database.
+/// Returns `None` if no refresh has been recorded yet.
+pub fn get_quote_refresh_time(db: &Database) -> Result<Option<String>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT updated_at FROM cached_quote_refresh_time WHERE id = 1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
 /// Deduplicate a list of (symbol, market) pairs, keeping only the first
 /// occurrence of each symbol.  This avoids redundant API calls when the same
 /// stock is held in multiple accounts.

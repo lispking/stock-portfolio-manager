@@ -405,6 +405,15 @@ impl Database {
 
         conn.execute_batch(
             "
+            CREATE TABLE IF NOT EXISTS cached_quote_refresh_time (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                updated_at TEXT NOT NULL
+            );
+        ",
+        )?;
+
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS option_records (
                 id TEXT PRIMARY KEY NOT NULL,
                 account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
