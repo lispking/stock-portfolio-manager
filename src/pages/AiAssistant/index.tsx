@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Input, Popconfirm, Space, Switch, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Input, Popconfirm, Popover, Space, Switch, Tag, Tooltip, Typography, message } from "antd";
 import {
   RobotOutlined,
   SendOutlined,
@@ -25,7 +25,8 @@ import remarkGfm from "remark-gfm";
 import { useChatStore, selectSessionTotalTokens } from "../../stores/chatStore";
 import { useChatSessionStore } from "../../stores/chatSessionStore";
 import { useAiStore } from "../../stores/aiStore";
-import type { ChatMessageWithMeta, ChatSession, ChatUsage } from "../../types";
+import { useSkillStore } from "../../stores/skillStore";
+import type { ChatMessageWithMeta, ChatSession, ChatUsage, Skill } from "../../types";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -54,6 +55,7 @@ export default function AiAssistantPage() {
   // avoids re-rendering the whole page on every unrelated chatStore change.
   const streamingSessionId = useChatStore((s) => s.streamingSessionIdState);
   const { fetchConfig } = useAiStore();
+  const { fetchSkills } = useSkillStore();
 
   const [bootstrapped, setBootstrapped] = useState(false);
 
@@ -65,6 +67,7 @@ export default function AiAssistantPage() {
   useEffect(() => {
     init();
     fetchConfig();
+    void fetchSkills();
     (async () => {
       await fetchSessions();
       setBootstrapped(true);
@@ -421,8 +424,24 @@ function ChatPanel({
     setContextEnabled,
     loadSessionMessages,
     resetForSessionSwitch,
+    setActiveSkillsForNextTurn,
   } = useChatStore();
+  // Read the staged explicit selection so the Composer can render "待激活"
+  // chips. Subscribing via the store keeps the chips reactive as the user
+  // adds/removes skills via `/` or the × button.
+  const pendingActiveSkillIds = useChatStore((s) => s.pendingActiveSkills);
   const { config } = useAiStore();
+  const { skills } = useSkillStore();
+  // Quick chips and `/` autocomplete only show enabled skills.
+  const enabledSkills = useMemo(() => skills.filter((s) => s.enabled), [skills]);
+  // Resolve staged ids to full skill objects for chip rendering. Unknown ids
+  // (e.g. a staged skill was deleted) are silently filtered out.
+  const stagedSkills = useMemo(() => {
+    const byId = new Map(skills.map((s) => [s.id, s]));
+    return pendingActiveSkillIds
+      .map((id) => byId.get(id))
+      .filter((s): s is Skill => !!s);
+  }, [pendingActiveSkillIds, skills]);
   const touchSession = useChatSessionStore((s) => s.touchSession);
   const autoRenameIfDefault = useChatSessionStore((s) => s.autoRenameIfDefault);
   const createSession = useChatSessionStore((s) => s.createSession);
@@ -590,6 +609,50 @@ function ChatPanel({
     }
   };
 
+  // Stage a skill for explicit activation on the next send. We APPEND to the
+  // existing staged list (deduped) so the user can layer multiple skills via
+  // repeated `/` picks; the staged chips above the composer let them review
+  // and remove individual picks before sending.
+  const handlePickSkill = (skill: Skill) => {
+    const current = pendingActiveSkillIds.filter((id) => id !== skill.id);
+    setActiveSkillsForNextTurn([...current, skill.id]);
+    message.success(`已激活技能：${skill.name}（发送时生效）`);
+  };
+
+  // Remove a single staged skill via the × on its chip.
+  const handleRemoveStagedSkill = (skillId: string) => {
+    setActiveSkillsForNextTurn(pendingActiveSkillIds.filter((id) => id !== skillId));
+  };
+
+  // Quick chip on the welcome hero: stage the skill AND immediately send a
+  // canned opening prompt so the user sees an actionable result. The prompt
+  // is derived from the skill's trigger / description so it's relevant.
+  const handleQuickSkill = async (skill: Skill) => {
+    if (notConfigured) {
+      message.warning("请先在「设置 → AI 配置」中完成配置");
+      return;
+    }
+    if (sending) {
+      message.warning("AI 正在回复中，请等待当前回复完成");
+      return;
+    }
+    setActiveSkillsForNextTurn([skill.id]);
+    const prompt = `请使用「${skill.name}」技能帮我分析当前的投资组合。`;
+    const wasEmpty = messages.length === 0;
+    const wasNewChat = !sessionId;
+    if (wasNewChat) expectingSessionCreation.current = true;
+    const sid = await ensureSession();
+    if (!sid) {
+      expectingSessionCreation.current = false;
+      return;
+    }
+    await sendMessage(prompt, sid);
+    await touchSession(sid);
+    if (wasEmpty) {
+      void autoRenameIfDefault(sid, prompt);
+    }
+  };
+
   const handleClear = async () => {
     if (!sessionId) return;
     await clearMessages(sessionId);
@@ -719,6 +782,10 @@ function ChatPanel({
               stopGeneration={stopGeneration}
               sending={sending}
               notConfigured={!!notConfigured}
+              skills={enabledSkills}
+              onPickSkill={handlePickSkill}
+              stagedSkills={stagedSkills}
+              onRemoveStagedSkill={handleRemoveStagedSkill}
             />
           </div>
         </>
@@ -772,7 +839,33 @@ function ChatPanel({
                 sending={sending}
                 notConfigured={!!notConfigured}
                 size="large"
+                skills={enabledSkills}
+                onPickSkill={handlePickSkill}
+                stagedSkills={stagedSkills}
+                onRemoveStagedSkill={handleRemoveStagedSkill}
               />
+            )}
+
+            {enabledSkills.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mt-4">
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  <ThunderboltOutlined /> 快捷技能：
+                </Text>
+                {enabledSkills.map((s) => (
+                  <Tooltip
+                    key={s.id}
+                    title={s.description || `使用「${s.name}」技能开始分析`}
+                  >
+                    <Tag
+                      color="purple"
+                      style={{ cursor: "pointer", marginInlineEnd: 0 }}
+                      onClick={() => handleQuickSkill(s)}
+                    >
+                      {s.name}
+                    </Tag>
+                  </Tooltip>
+                ))}
+              </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
@@ -803,6 +896,10 @@ function Composer({
   sending,
   notConfigured,
   size = "default",
+  skills,
+  onPickSkill,
+  stagedSkills,
+  onRemoveStagedSkill,
 }: {
   input: string;
   setInput: (v: string) => void;
@@ -812,9 +909,89 @@ function Composer({
   sending: boolean;
   notConfigured: boolean;
   size?: "default" | "large";
+  /** Skills available for `/` autocomplete. */
+  skills: Skill[];
+  /** Called when the user picks a skill from the `/` popover. */
+  onPickSkill: (skill: Skill) => void;
+  /** Skills currently staged for the next send (rendered as chips). */
+  stagedSkills: Skill[];
+  /** Remove a staged skill (the × button on its chip). */
+  onRemoveStagedSkill: (skillId: string) => void;
 }) {
   const minRows = size === "large" ? 2 : 1;
   const canSend = input.trim().length > 0 && !notConfigured;
+
+  // `/` autocomplete: when the text ends with `/` (optionally followed by a
+  // filter prefix with no intervening whitespace), show a filtered skill list.
+  // Picking one stages the skill for explicit activation and removes the `/…`
+  // token from the input.
+  const slashMatch = input.match(/(^|\s)\/([^\s/]*)$/);
+  const slashOpen = !!slashMatch && skills.length > 0;
+  const slashFilter = slashMatch ? slashMatch[2].toLowerCase() : "";
+  const filteredSkills = useMemo(() => {
+    if (!slashOpen) return [];
+    return skills.filter(
+      (s) =>
+        s.name.toLowerCase().includes(slashFilter) ||
+        s.id.toLowerCase().includes(slashFilter),
+    );
+  }, [slashOpen, slashFilter, skills]);
+
+  // Keyboard navigation within the `/` popover. `activeIdx` is the focused
+  // row; ArrowUp/ArrowDown move it (with wrap-around), Enter picks, Escape
+  // dismisses by clearing the `/…` token. Reset whenever the filter or open
+  // state changes so the highlight doesn't point at a stale row.
+  const [activeIdx, setActiveIdx] = useState(0);
+  useEffect(() => {
+    setActiveIdx(0);
+  }, [slashOpen, slashFilter]);
+
+  const pickSkill = (skill: Skill) => {
+    // Strip the trailing `/…` token (the match group spans from the leading
+    // whitespace-or-start through the end of input).
+    if (slashMatch) {
+      const stripped = input.slice(0, input.length - slashMatch[0].length);
+      setInput(stripped);
+    }
+    onPickSkill(skill);
+  };
+
+  const dismissSlash = () => {
+    // Remove the trailing `/…` token — closing the menu by editing rather
+    // than by an external flag keeps the open state a pure function of input.
+    if (slashMatch) {
+      const stripped = input.slice(0, input.length - slashMatch[0].length);
+      setInput(stripped);
+    }
+  };
+
+  const onTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen && filteredSkills.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIdx((i) => (i + 1) % filteredSkills.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIdx((i) => (i - 1 + filteredSkills.length) % filteredSkills.length);
+        return;
+      }
+      if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        // Plain Enter selects the highlighted skill; Cmd/Ctrl+Enter still
+        // sends (handled by handleKeyDown below).
+        e.preventDefault();
+        pickSkill(filteredSkills[activeIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        dismissSlash();
+        return;
+      }
+    }
+    handleKeyDown(e);
+  };
 
   // The send/stop button sits in the bottom-right corner of the textarea
   // wrapper. To keep the button inside the box at every textarea height we
@@ -823,21 +1000,107 @@ function Composer({
   // always room for the 34px button plus breathing space.
   return (
     <div className="relative">
-      <TextArea
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={notConfigured ? "请先完成 AI 配置…" : "输入问题，Ctrl/⌘+Enter 发送"}
-        autoSize={{ minRows, maxRows: 8 }}
-        disabled={notConfigured}
-        style={{
-          paddingRight: 56,
-          paddingTop: 12,
-          paddingBottom: 12,
-          minHeight: size === "large" ? 72 : 60,
-          ...(size === "large" ? { fontSize: 15 } : {}),
-        }}
-      />
+      {/* Staged-skill chips above the textarea so the user can see — and
+          remove — the explicit selection that will apply to the next send. */}
+      {stagedSkills.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 mb-2">
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            待激活：
+          </Text>
+          {stagedSkills.map((s) => (
+            <Tag
+              key={s.id}
+              color="purple"
+              icon={<ThunderboltOutlined />}
+              closable
+              onClose={() => onRemoveStagedSkill(s.id)}
+              style={{ marginInlineEnd: 0 }}
+            >
+              {s.name}
+            </Tag>
+          ))}
+        </div>
+      )}
+      <Popover
+        open={slashOpen}
+        placement="topLeft"
+        trigger={[]}
+        showArrow={false}
+        overlayStyle={{ minWidth: 280 }}
+        content={
+          <div
+            className="overflow-auto"
+            style={{ maxHeight: 264 }}
+            // Clicking outside the popover closes it via input mutation
+            // (handled by AntD's onOpenChange → we re-derive from input).
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {filteredSkills.length === 0 ? (
+              <div style={{ padding: "8px 12px" }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  没有匹配的技能
+                </Text>
+              </div>
+            ) : (
+              filteredSkills.map((s, idx) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => pickSkill(s)}
+                  onMouseEnter={() => setActiveIdx(idx)}
+                  className="block w-full text-left rounded transition-colors"
+                  style={{
+                    border: "none",
+                    background:
+                      idx === activeIdx ? "#f3e8ff" : "transparent",
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <ThunderboltOutlined style={{ color: "#7c3aed" }} />
+                    <span style={{ fontWeight: 500 }}>{s.name}</span>
+                    {s.source === "builtin" && (
+                      <Tag style={{ marginInlineEnd: 0, fontSize: 11 }}>内置</Tag>
+                    )}
+                  </div>
+                  {s.description && (
+                    <div
+                      className="text-gray-500"
+                      style={{ fontSize: 12, marginTop: 2, paddingLeft: 20 }}
+                    >
+                      {s.description}
+                    </div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        }
+      >
+        {/* Anchor: the textarea itself. Popover attaches to its top-left,
+            which is reliably near where `/` was typed on a fresh composer
+            and avoids the old zero-size corner div. */}
+        <TextArea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onTextareaKeyDown}
+          placeholder={
+            notConfigured
+              ? "请先完成 AI 配置…"
+              : "输入问题，Ctrl/⌘+Enter 发送。输入 / 选择技能"
+          }
+          autoSize={{ minRows, maxRows: 8 }}
+          disabled={notConfigured}
+          style={{
+            paddingRight: 56,
+            paddingTop: 12,
+            paddingBottom: 12,
+            minHeight: size === "large" ? 72 : 60,
+            ...(size === "large" ? { fontSize: 15 } : {}),
+          }}
+        />
+      </Popover>
       <button
         type="button"
         onClick={sending ? stopGeneration : handleSend}
@@ -978,6 +1241,20 @@ function MessageRow({
     <div className="flex gap-3">
       {avatar}
       <div className="flex-1 min-w-0 pt-0.5">
+        {message.activatedSkills && message.activatedSkills.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {message.activatedSkills.map((name) => (
+              <Tag
+                key={name}
+                icon={<ThunderboltOutlined />}
+                color="purple"
+                style={{ marginInlineEnd: 0, fontSize: 12 }}
+              >
+                已用技能：{name}
+              </Tag>
+            ))}
+          </div>
+        )}
         {message.error ? (
           <ErrorCard
             error={message.error}

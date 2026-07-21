@@ -434,7 +434,7 @@ export default function ImportHoldingFromFirstradeCsvModal({
       onCancel={handleClose}
       footer={null}
       width={820}
-      destroyOnClose
+      destroyOnHidden
     >
       <Steps current={step} items={stepItems} className="mb-6" />
 

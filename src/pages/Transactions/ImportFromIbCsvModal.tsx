@@ -731,7 +731,7 @@ export default function ImportFromIbCsvModal({
       onCancel={handleClose}
       footer={footer}
       width={step === 1 ? 980 : 520}
-      destroyOnClose
+      destroyOnHidden
     >
       <Steps
         current={step}

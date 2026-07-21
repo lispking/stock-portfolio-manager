@@ -679,6 +679,20 @@ export interface ChatMessageWithMeta {
   usage?: ChatUsage;
   stopped?: boolean;
   error?: string;
+  /**
+   * Names of the skills the backend activated for this turn (explicit via
+   * `active_skills`, or auto-matched from triggers). Populated from the
+   * `ai-chat-skill` event. Only set on the assistant placeholder that the
+   * backend is streaming into; used to render a "⚡ 已用技能" badge.
+   */
+  activatedSkills?: string[];
+  /**
+   * Skill IDs the user *explicitly* staged for this turn (via `/`, `@`, or a
+   * quick chip). Captured onto the assistant placeholder at send time so a
+   * retry of a failed turn can re-send the same explicit selection instead
+   * of silently dropping it (see chatStore.retryLastTurn).
+   */
+  explicitSkillIds?: string[];
 }
 
 /** A persisted AI chat session (one named conversation). */
@@ -700,6 +714,30 @@ export interface ChatMessageRecord {
   total_tokens: number;
   cached_tokens: number;
   created_at: string;
+}
+
+// AI Assistant skills (Markdown skill files with frontmatter)
+
+/** Where a skill came from. Builtin skills ship with the app; User marks any
+ *  skill the user created or edited. The value comes straight from the Rust
+ *  enum (serde `rename_all = "lowercase"`). */
+export type SkillSource = "builtin" | "user";
+
+/**
+ * A single AI assistant skill: a Markdown body plus frontmatter metadata.
+ * The body is appended to the system prompt when the skill activates. `id`
+ * is the file stem and the stable handle used by `/` / `@` invocation and by
+ * `active_skills` on the chat request.
+ */
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  trigger: string[];
+  enabled: boolean;
+  content: string;
+  source: SkillSource;
+  updatedAt: string;
 }
 
 // Quote Provider Config

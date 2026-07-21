@@ -59,6 +59,10 @@ pub struct ChatRequest {
     /// Whether to inject the live portfolio snapshot as extra context.
     #[serde(default)]
     pub include_context: bool,
+    /// Skill ids the user explicitly activated (via `/` / `@` or a quick
+    /// chip). Empty means "auto-activate based on the latest user message".
+    #[serde(default)]
+    pub active_skills: Vec<String>,
 }
 
 /// Stream an AI chat completion to the frontend via Tauri events
@@ -81,6 +85,7 @@ pub async fn chat_with_ai(
         ChatParams {
             messages: req.messages,
             include_context: req.include_context,
+            active_skills: req.active_skills,
         },
     )
     .await
