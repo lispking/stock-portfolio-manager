@@ -50,6 +50,7 @@ Built with **Tauri 2.0** + **React 19** + **TypeScript** + **Rust** + **SQLite**
 - 🔔 Price alerts & notifications (price threshold, change %, P&L triggers)
 - 🔍 Historical decision review & tracking (per-stock timeline, decision quality stats)
 - 🤖 AI-powered investment analysis (OpenAI integration, portfolio analysis, risk assessment)
+- ⚡ AI assistant skills (Markdown skill files with auto/manual activation — see [docs/skills.md](docs/skills.md))
 
 ## Tech Stack
 
@@ -213,6 +214,8 @@ SQLite database is stored in the system app data directory:
 | **benchmark_daily_prices** | Cached benchmark index historical prices |
 | **price_alerts** | Price alert rules and trigger history |
 | **ai_config** | AI service configuration |
+
+> 💡 AI assistant **skills** are not stored in the database — they live as Markdown files in the `{app_data_dir}/skills/` directory. See [docs/skills.md](docs/skills.md) for the file format.
 
 ### System Categories
 

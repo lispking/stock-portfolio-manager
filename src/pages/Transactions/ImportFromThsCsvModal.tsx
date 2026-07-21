@@ -638,7 +638,7 @@ export default function ImportFromThsCsvModal({
       onCancel={handleClose}
       footer={footer}
       width={step === 1 ? 1020 : 560}
-      destroyOnClose
+      destroyOnHidden
     >
       <Steps
         current={step}

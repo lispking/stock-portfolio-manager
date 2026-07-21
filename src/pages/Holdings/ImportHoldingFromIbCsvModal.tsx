@@ -535,7 +535,7 @@ export default function ImportHoldingFromIbCsvModal({
       onCancel={handleClose}
       footer={null}
       width={820}
-      destroyOnClose
+      destroyOnHidden
     >
       <Steps current={step} items={stepItems} className="mb-6" />
 

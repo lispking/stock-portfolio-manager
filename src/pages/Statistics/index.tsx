@@ -197,7 +197,7 @@ export default function StatisticsPage() {
         activeKey={activeTab}
         onChange={setActiveTab}
         items={tabs}
-        destroyInactiveTabPane={false}
+        destroyOnHidden={false}
       />
     </div>
   );

@@ -17,12 +17,14 @@
 use crate::commands::dashboard::build_holding_details_pub;
 use crate::db::Database;
 use crate::models::ai_config::ChatMessage;
+use crate::models::skill::Skill;
 use crate::services::ai_config_service;
 use crate::services::ai_models_service::resolve_base_url;
 use crate::services::exchange_rate_service::{get_cached_rates, ExchangeRateCache};
 use crate::services::http_client;
 use crate::services::performance_service::{self, PerformanceFilter};
 use crate::services::quote_service::QuoteCache;
+use crate::services::skill_service::{self, build_skill_system_message};
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -39,6 +41,11 @@ pub struct ChatParams {
     /// Whether to inject the portfolio context snapshot before the user
     /// messages.
     pub include_context: bool,
+    /// Skill ids the user explicitly activated for this turn (via `/` or `@`
+    /// in the composer, or by clicking a quick chip). Takes priority over
+    /// automatic trigger-based activation.
+    #[allow(dead_code)] // read via resolve_active_skills
+    pub active_skills: Vec<String>,
 }
 
 /// Token-usage accounting for a single chat completion. Emitted to the
@@ -73,6 +80,52 @@ static STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 /// new turn.
 pub fn stop_chat() {
     STOP_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skill activation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Resolve which skills are active for this turn.
+///
+/// 1. If the user passed explicit skill ids (`active_skills`), look each one
+///    up by id and use it as-is (regardless of `enabled` — explicit wins).
+///    Unknown ids are silently dropped.
+/// 2. Otherwise, fall back to **auto-activation**: load every skill, then
+///    match each one's `trigger` keywords against the latest user message
+///    (case-insensitive). Disabled skills are skipped.
+///
+/// Errors loading the skill list are swallowed (best-effort — skills should
+/// never block the chat), returning an empty vec.
+fn resolve_active_skills(app: &AppHandle, params: &ChatParams) -> Vec<Skill> {
+    // Explicit selection path.
+    if !params.active_skills.is_empty() {
+        let ids: std::collections::HashSet<&str> =
+            params.active_skills.iter().map(|s| s.as_str()).collect();
+        let selected: Vec<Skill> = skill_service::list_skills(app)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| ids.contains(s.id.as_str()))
+            .collect();
+        if !selected.is_empty() {
+            return selected;
+        }
+        // Fall through to auto-activation if every id was unknown.
+    }
+
+    // Auto-activation path: scan the latest user message for trigger hits.
+    let latest_user = params
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.as_str())
+        .unwrap_or("");
+    if latest_user.trim().is_empty() {
+        return Vec::new();
+    }
+    let skills = skill_service::list_skills(app).unwrap_or_default();
+    skill_service::match_triggers(&skills, latest_user)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,11 +426,27 @@ pub async fn chat_stream(
     };
     let url = format!("{base}/chat/completions");
 
+    // Resolve which skills apply to this turn: the user's explicit selection
+    // takes priority; otherwise we auto-activate any skill whose trigger
+    // keyword appears in the latest user message. We also tell the frontend
+    // which skills ended up active so the UI can show a badge.
+    let activated = resolve_active_skills(&app, &params);
+    if !activated.is_empty() {
+        let names: Vec<String> = activated.iter().map(|s| s.name.clone()).collect();
+        let _ = app.emit("ai-chat-skill", names);
+    }
+
     // Build the full message list: system prompt, optional context, then the
     // conversation history from the frontend.
     let mut messages: Vec<serde_json::Value> = Vec::new();
     if !cfg.system_prompt.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": cfg.system_prompt }));
+    }
+    // Active skills are injected as an extra system message so the model
+    // treats them as authoritative instructions on top of its base persona.
+    let skill_block = build_skill_system_message(&activated);
+    if !skill_block.is_empty() {
+        messages.push(json!({ "role": "system", "content": skill_block }));
     }
     if params.include_context {
         match build_portfolio_context(db, cache, quote_cache).await {

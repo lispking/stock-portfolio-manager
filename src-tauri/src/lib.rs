@@ -70,6 +70,16 @@ pub fn run() {
                 });
             }
 
+            // Materialise built-in AI skills into the user skills directory on
+            // first launch so the user can see, edit, and delete them. Existing
+            // files are never overwritten — user edits win.
+            {
+                let handle = app.handle().clone();
+                if let Err(e) = crate::services::skill_service::export_builtin_skills(&handle) {
+                    eprintln!("Failed to export built-in skills: {}", e);
+                }
+            }
+
             // Spawn a background task to refresh holding quotes from the API.
             // This runs after startup so the UI is not blocked.
             let handle = app.handle().clone();
@@ -245,6 +255,15 @@ pub fn run() {
             commands::chat_sessions::save_chat_messages,
             commands::chat_sessions::clear_chat_session,
             commands::chat_sessions::generate_session_title,
+            // AI Assistant skills (Markdown skill files)
+            commands::skills::list_skills,
+            commands::skills::get_skill,
+            commands::skills::save_skill,
+            commands::skills::delete_skill,
+            commands::skills::reset_skills,
+            commands::skills::clone_skill,
+            commands::skills::export_skill,
+            commands::skills::import_skill,
             // Quote Provider Config
             commands::quote_provider::get_quote_provider_config,
             commands::quote_provider::update_quote_provider_config,

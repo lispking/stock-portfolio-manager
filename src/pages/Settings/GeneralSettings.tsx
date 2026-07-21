@@ -462,7 +462,7 @@ export default function GeneralSettings() {
         styles={{ header: { borderBottomColor: "#ffd6cc" } }}
         style={{ borderColor: "#ffa39e" }}
       >
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             恢复出厂设置将<strong>永久清除</strong>以下数据并重置所有配置：
           </Typography.Paragraph>
@@ -495,11 +495,11 @@ export default function GeneralSettings() {
         }}
         cancelButtonProps={{ disabled: resetting }}
         closable={!resetting}
-        maskClosable={!resetting}
+        mask={{ closable: !resetting }}
         onCancel={() => setResetModalOpen(false)}
         onOk={handleConfirmFactoryReset}
       >
-        <Space direction="vertical" size="middle" style={{ width: "100%", paddingTop: 8 }}>
+        <Space orientation="vertical" size="middle" style={{ width: "100%", paddingTop: 8 }}>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             即将清空所有账户、持仓、交易、快照、AI 聊天记录等数据，并将全部配置重置为初始状态。
           </Typography.Paragraph>

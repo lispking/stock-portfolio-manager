@@ -162,5 +162,11 @@ pub fn factory_reset(
     quote_service::set_xueqiu_user_u(None);
     quote_service::reset_xueqiu_token();
 
+    // Restore AI skills to the factory set. Best-effort: a failure here
+    // shouldn't undo the otherwise-successful wipe.
+    if let Err(e) = crate::services::skill_service::reset_all_skills(&app) {
+        eprintln!("factory_reset: failed to reset skills: {}", e);
+    }
+
     Ok(())
 }

@@ -73,6 +73,17 @@ interface ChatState {
   resetForSessionSwitch: () => Promise<void>;
   clearMessages: (sessionId: string) => Promise<void>;
   setContextEnabled: (enabled: boolean) => void;
+  /**
+   * Stage explicit skill ids for the next outbound turn (consumed on send).
+   * Pass an empty array to fall back to automatic trigger-based activation.
+   */
+  setActiveSkillsForNextTurn: (skillIds: string[]) => void;
+  /**
+   * Skill ids currently staged for the next send (set via `/` / `@` / quick
+   * chip). Read by the Composer to render "待激活" chips with a remove (×)
+   * button. Cleared on send (sendMessage / editAndResend).
+   */
+  pendingActiveSkills: string[];
 }
 
 // Module-scope guards so the streaming listeners are registered at most once.
@@ -111,6 +122,12 @@ interface BackgroundStream {
   streamingId: string;
 }
 let backgroundStream: BackgroundStream | null = null;
+
+// Explicitly activated skill ids for the *next* outbound turn. Kept in the
+// store as `pendingActiveSkills` so the UI can render "待激活" chips. Set by
+// `setActiveSkillsForNextTurn`; consumed and cleared by `sendMessage` /
+// `editAndResend` so the selection only applies to the very next send. When
+// empty, the backend falls back to automatic trigger-based activation.
 
 // Use the browser's native UUID for client-side message ids so the same id
 // can round-trip through the database primary key without collision.
@@ -332,6 +349,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingInBackground: false,
   streamingSessionIdState: null,
   viewSessionId: null,
+  pendingActiveSkills: [],
 
   init: () => {
     if (listenersBound) return;
@@ -439,6 +457,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.error("[chatStore] failed to bind ai-chat-error listener", e);
       listenersBound = false;
     });
+
+    // The backend tells us which skill names it activated for the in-flight
+    // turn (explicit selection or auto-matched triggers). Stamp them onto the
+    // streaming placeholder so the UI can render a "⚡ 已用技能" badge. Like
+    // the other streaming events, this routes through `applyStreamUpdate` so
+    // background streams are handled correctly too.
+    listen<string[]>("ai-chat-skill", (event) => {
+      const names = event.payload;
+      if (!Array.isArray(names) || names.length === 0 || !streamingId) return;
+      applyStreamUpdate(set, (m) => ({ ...m, activatedSkills: names }));
+    }).catch((e) => {
+      console.error("[chatStore] failed to bind ai-chat-skill listener", e);
+    });
   },
 
   loadSessionMessages: async (sessionId) => {
@@ -543,11 +574,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content: trimmed,
       createdAt: now,
     };
+    // Consume the one-shot explicit skill selection for this turn (set via
+    // `/`, `@`, or a quick chip) BEFORE building the placeholder, so it can
+    // be stamped onto the assistant row and later re-applied by retryLastTurn.
+    const activeSkills = get().pendingActiveSkills;
+    set({ pendingActiveSkills: [] });
     const assistantMsg: ChatMessageWithMeta = {
       id: newId(),
       role: "assistant",
       content: "",
       createdAt: now + 1,
+      // Remember the explicit selection so a retry of this turn re-sends the
+      // same skills instead of dropping them (see retryLastTurn).
+      ...(activeSkills.length > 0 ? { explicitSkillIds: activeSkills } : {}),
     };
     streamingId = assistantMsg.id;
     streamingSessionId = sessionId;
@@ -580,10 +619,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     void persistMessages(sessionId, [...priorMessages, userMsg]);
 
     try {
+      // An empty array lets the backend fall back to automatic trigger-based
+      // activation.
       await invoke("chat_with_ai", {
         req: {
           messages: history,
           includeContext: get().contextEnabled,
+          activeSkills,
         },
       });
     } catch (err) {
@@ -605,11 +647,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (target.role !== "user") return;
 
     const editedUser: ChatMessageWithMeta = { ...target, content: trimmed };
+    // Consume any staged explicit selection here too (a `/`-pick made just
+    // before editing should still apply to the edited turn).
+    const activeSkills = get().pendingActiveSkills;
+    set({ pendingActiveSkills: [] });
     const assistantMsg: ChatMessageWithMeta = {
       id: newId(),
       role: "assistant",
       content: "",
       createdAt: Date.now() + 1,
+      ...(activeSkills.length > 0 ? { explicitSkillIds: activeSkills } : {}),
     };
     streamingId = assistantMsg.id;
     streamingSessionId = sessionId;
@@ -637,6 +684,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         req: {
           messages: history,
           includeContext: get().contextEnabled,
+          activeSkills,
         },
       });
     } catch (err) {
@@ -661,6 +709,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // way the original turn did.
     const history = buildHistory(messages.slice(0, failedIdx));
 
+    // Re-apply the explicit skill selection that was staged for the original
+    // turn (captured on the placeholder as `explicitSkillIds`). Without this
+    // a retry would silently drop a `/`-picked skill and fall back to auto
+    // matching. When none was set, an empty array preserves the original
+    // behaviour (auto-match from the latest user message).
+    const activeSkills = failedMsg.explicitSkillIds ?? [];
+
     // Reset the placeholder: clear error, wipe any partial content, and mark
     // it as the active streaming target so delta/usage/done listeners fill it.
     streamingId = failedMsg.id;
@@ -681,6 +736,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         req: {
           messages: history,
           includeContext: get().contextEnabled,
+          activeSkills,
         },
       });
     } catch (err) {
@@ -789,6 +845,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setContextEnabled: (enabled) => set({ contextEnabled: enabled }),
+
+  setActiveSkillsForNextTurn: (skillIds) => {
+    set({ pendingActiveSkills: skillIds.slice() });
+  },
 }));
 
 /** Sum the total tokens of every assistant message with usage info. */

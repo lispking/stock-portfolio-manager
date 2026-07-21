@@ -16,6 +16,7 @@ pub mod quote_provider;
 pub mod quotes;
 pub mod reset;
 pub mod review;
+pub mod skills;
 pub mod snapshots;
 pub mod statistics;
 pub mod stock_splits;

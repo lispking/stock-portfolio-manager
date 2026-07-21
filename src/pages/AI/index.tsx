@@ -12,19 +12,42 @@ import {
   Space,
   Tooltip,
   Switch,
+  Tabs,
+  Segmented,
+  Modal,
+  Tag,
+  Popconfirm,
+  Empty,
+  Dropdown,
+  Spin,
 } from "antd";
 import {
-  RobotOutlined,
   SaveOutlined,
   ReloadOutlined,
   EditOutlined,
   InfoCircleOutlined,
   UndoOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  ThunderboltOutlined,
+  EyeOutlined,
+  CodeOutlined,
+  CopyOutlined,
+  ExportOutlined,
+  ImportOutlined,
+  ExperimentOutlined,
+  MoreOutlined,
 } from "@ant-design/icons";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { useNavigate } from "react-router-dom";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useAiStore } from "../../stores/aiStore";
-import type { AiModelInfo, AiProvider } from "../../types";
+import { useSkillStore } from "../../stores/skillStore";
+import { useChatStore } from "../../stores/chatStore";
+import type { AiModelInfo, AiProvider, Skill } from "../../types";
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 interface ProviderOption {
@@ -100,7 +123,10 @@ function providerOf(value: string): ProviderOption | undefined {
   return PROVIDERS.find((p) => p.value === value);
 }
 
-export default function AIPage() {
+/** The "API 设置" tab — LLM connection (provider / key / endpoint / model /
+ *  system prompt) plus the static "功能说明" card. Kept together because both
+ *  belong to API-level configuration. */
+function ApiSettingsCard() {
   const { config, loading, fetchConfig, updateConfig, fetchModels, getDefaultSystemPrompt } =
     useAiStore();
   const [form] = Form.useForm();
@@ -224,17 +250,6 @@ export default function AIPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Title level={2}>
-        <RobotOutlined /> AI 投资分析（实验性）
-      </Title>
-
-      <Alert
-        type="info"
-        title="实验性功能"
-        description="支持 OpenAI、Ollama、OpenRouter 以及 Kimi、GLM（智谱）、MiMo（小米）、DeepSeek 等主流服务。填写 API Key 后可自动获取可用模型列表，获取失败时也可手动输入。API Key 仅本地存储，不会上传。使用前请确保 API Key 有效，并了解相关费用。"
-        showIcon
-      />
-
       <Card title="API 配置">
         <Form form={form} layout="vertical" style={{ maxWidth: 600 }}>
           <Form.Item name="provider" label="AI 提供商" rules={[{ required: true }]}>
@@ -399,5 +414,550 @@ export default function AIPage() {
         </Text>
       </Card>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page shell — renders the experimental-feature banner and the API / Skills tabs.
+// (No page title here: AIPage is itself the content of the "🤖 AI 配置" tab on
+// the Settings page, which already shows the page title and tab label.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function AIPage() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Alert
+        type="info"
+        title="实验性功能"
+        description="支持 OpenAI、Ollama、OpenRouter 以及 Kimi、GLM（智谱）、MiMo（小米）、DeepSeek 等主流服务。填写 API Key 后可自动获取可用模型列表，获取失败时也可手动输入。API Key 仅本地存储，不会上传。使用前请确保 API Key 有效，并了解相关费用。"
+        showIcon
+      />
+
+      <Tabs
+        // Keep both tabs mounted so the API Form's field values aren't reset
+        // when switching to Skills and back.
+        destroyOnHidden={false}
+        items={[
+          {
+            key: "api",
+            label: "API 设置",
+            children: <ApiSettingsCard />,
+          },
+          {
+            key: "skills",
+            label: "技能设置",
+            children: <SkillManager />,
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skill management panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Strict kebab-case: lowercase letter first, then lowercase letters / digits /
+ * hyphen-separated segments. No leading digit, no consecutive or trailing
+ * hyphens. Examples: `my-risk-skill`, `portfolio2`, `q3-report`.
+ */
+const SKILL_ID_PATTERN = /^[a-z]([a-z0-9]*)(-[a-z0-9]+)*$/;
+
+/** Validate a skill id; returns an error message or null when valid. */
+function validateSkillId(id: string): string | null {
+  const trimmed = id.trim();
+  if (!trimmed) return "请填写技能 ID";
+  if (!SKILL_ID_PATTERN.test(trimmed)) {
+    return "技能 ID 需为小写字母开头的 kebab-case（仅小写字母、数字、连字符，例如 my-risk-skill）";
+  }
+  return null;
+}
+
+/** A blank skill template the "新建技能" modal starts from. */
+function emptyDraft(): Skill {
+  return {
+    id: "",
+    name: "",
+    description: "",
+    trigger: [],
+    enabled: true,
+    content: "",
+    source: "user",
+    updatedAt: "",
+  };
+}
+
+function SkillManager() {
+  const {
+    skills,
+    loading,
+    error,
+    fetchSkills,
+    saveSkill,
+    deleteSkill,
+    resetSkills,
+    cloneSkill,
+    exportSkill,
+    importSkill,
+  } = useSkillStore();
+  const navigate = useNavigate();
+  const setActiveSkillsForNextTurn = useChatStore(
+    (s) => s.setActiveSkillsForNextTurn,
+  );
+  const [modalOpen, setModalOpen] = useState(false);
+  const [draft, setDraft] = useState<Skill>(emptyDraft());
+  const [saving, setSaving] = useState(false);
+  // Editor mode: "edit" shows the raw Markdown textarea, "preview" renders it.
+  // The toggle lives in the modal header so the user can flip while typing.
+  const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
+
+  useEffect(() => {
+    fetchSkills();
+  }, [fetchSkills]);
+
+  const openCreate = () => {
+    setDraft(emptyDraft());
+    setEditorMode("edit");
+    setModalOpen(true);
+  };
+
+  const openEdit = (skill: Skill) => {
+    // Edit by copy: always write back as a user-owned skill (save_skill drops
+    // the builtin marker), so editing a builtin effectively forks it.
+    setDraft({ ...skill, source: "user" });
+    setEditorMode("edit");
+    setModalOpen(true);
+  };
+
+  const handleSaveDraft = async () => {
+    const trimmedId = draft.id.trim();
+    const trimmedName = draft.name.trim();
+    const idError = validateSkillId(trimmedId);
+    if (idError) {
+      message.warning(idError);
+      return;
+    }
+    if (!trimmedName) {
+      message.warning("请填写技能名称");
+      return;
+    }
+    if (!draft.content.trim()) {
+      message.warning("请填写技能正文（给 AI 的指令）");
+      return;
+    }
+    setSaving(true);
+    const ok = await saveSkill({
+      ...draft,
+      id: trimmedId,
+      name: trimmedName,
+    });
+    setSaving(false);
+    if (ok) {
+      message.success("技能已保存");
+      setModalOpen(false);
+    }
+  };
+
+  const handleToggle = async (skill: Skill, enabled: boolean) => {
+    // Flip enabled in place. save_skill writes the whole record back.
+    await saveSkill({ ...skill, enabled });
+  };
+
+  const handleDelete = async (id: string) => {
+    const ok = await deleteSkill(id);
+    if (ok) message.success("技能已删除");
+    else message.error("删除失败");
+  };
+
+  const handleReset = async () => {
+    const ok = await resetSkills();
+    if (ok) message.success("已恢复内置技能");
+    else message.error("恢复失败");
+  };
+
+  // Clone a skill under a new id. Suggests `{source}-copy` and falls back to
+  // `-copy-2`, `-copy-3`, … if that's taken, then saves immediately. The user
+  // can rename via edit afterwards.
+  const handleClone = async (skill: Skill) => {
+    const taken = new Set(skills.map((s) => s.id));
+    const base = `${skill.id}-copy`;
+    let newId = base;
+    let n = 2;
+    while (taken.has(newId)) {
+      newId = `${base}-${n}`;
+      n += 1;
+    }
+    const cloned = await cloneSkill(skill.id, newId);
+    if (cloned) {
+      message.success(`已克隆为「${cloned.name}」`);
+    } else {
+      message.error("克隆失败");
+    }
+  };
+
+  // Jump to the AI assistant with this skill staged for explicit activation
+  // on the next send. The user lands on the welcome screen ready to type.
+  const handleTest = (skill: Skill) => {
+    setActiveSkillsForNextTurn([skill.id]);
+    navigate("/ai-assistant");
+    message.success(`已激活技能：${skill.name}，输入问题后发送即生效`);
+  };
+
+  const handleExport = async (skill: Skill) => {
+    try {
+      const path = await saveDialog({
+        title: "导出技能",
+        defaultPath: `${skill.id}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (!path) return;
+      const written = await exportSkill(skill.id, String(path));
+      if (written) message.success(`已导出到 ${written}`);
+      else message.error("导出失败");
+    } catch (err) {
+      message.error("导出失败：" + String(err));
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const path = await openDialog({
+        title: "导入技能",
+        multiple: false,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (!path) return;
+      const imported = await importSkill(String(path));
+      if (imported) {
+        message.success(`已导入技能「${imported.name}」`);
+      } else {
+        message.error("导入失败");
+      }
+    } catch (err) {
+      message.error("导入失败：" + String(err));
+    }
+  };
+
+  return (
+    <Card
+      title={
+        <Space>
+          <ThunderboltOutlined />
+          <span>技能管理</span>
+        </Space>
+      }
+      extra={
+        <Space>
+          <Button icon={<PlusOutlined />} onClick={openCreate}>
+            新建技能
+          </Button>
+          <Button icon={<ImportOutlined />} onClick={handleImport}>
+            导入
+          </Button>
+          <Popconfirm
+            title="恢复内置技能？"
+            description="将清除你对内置技能的所有改动并重新写入出厂版本，自定义技能会保留。"
+            okText="恢复"
+            cancelText="取消"
+            onConfirm={handleReset}
+          >
+            <Button icon={<UndoOutlined />}>恢复内置</Button>
+          </Popconfirm>
+        </Space>
+      }
+    >
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          title="技能加载失败"
+          description={error}
+          style={{ marginBottom: 12 }}
+          action={
+            <Button size="small" onClick={() => fetchSkills()}>
+              重试
+            </Button>
+          }
+        />
+      )}
+      <Paragraph type="secondary" style={{ marginBottom: 12 }}>
+        技能是一段附加给 AI 的指令。开启「注入数据」后，匹配关键词的技能会自动激活；在 AI
+        助手中输入 <Text code>/</Text> 可手动选择技能。
+      </Paragraph>
+      {skills.length === 0 && !loading ? (
+        <Empty description="暂无技能，点击「新建技能」或「导入」按钮添加" />
+      ) : (
+        <Spin spinning={loading}>
+          <div className="flex flex-col gap-2">
+            {skills.map((skill) => (
+              <div
+                key={skill.id}
+                className="flex items-start justify-between gap-3"
+                style={{
+                  padding: "12px 0",
+                  borderBottom: "1px solid #f0f0f0",
+                }}
+              >
+                <div className="flex-1 min-w-0">
+                  <Space size="small">
+                    <span>{skill.name}</span>
+                    <Tag
+                      color={skill.source === "builtin" ? "blue" : "green"}
+                      style={{ marginInlineEnd: 0 }}
+                    >
+                      {skill.source === "builtin" ? "内置" : "自定义"}
+                    </Tag>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {skill.id}
+                    </Text>
+                  </Space>
+                  <div style={{ marginTop: 4 }}>
+                    <Space orientation="vertical" size={2} style={{ width: "100%" }}>
+                      {skill.description && (
+                        <Text type="secondary">{skill.description}</Text>
+                      )}
+                      {skill.trigger.length > 0 && (
+                        <Space size={4} wrap>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            触发词：
+                          </Text>
+                          {skill.trigger.map((t) => (
+                            <Tag key={t} style={{ marginInlineEnd: 0, fontSize: 12 }}>
+                              {t}
+                            </Tag>
+                          ))}
+                        </Space>
+                      )}
+                    </Space>
+                  </div>
+                </div>
+                <Space size="small" className="flex-shrink-0">
+                  <Tooltip title={skill.enabled ? "已启用自动激活" : "已停用"}>
+                    <Switch
+                      size="small"
+                      checked={skill.enabled}
+                      onChange={(checked) => handleToggle(skill, checked)}
+                    />
+                  </Tooltip>
+                  <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => openEdit(skill)}
+                  >
+                    编辑
+                  </Button>
+                  <Dropdown
+                    menu={{
+                      items: [
+                        {
+                          key: "test",
+                          icon: <ExperimentOutlined />,
+                          label: "测试技能",
+                          onClick: () => handleTest(skill),
+                        },
+                        {
+                          key: "clone",
+                          icon: <CopyOutlined />,
+                          label: "克隆",
+                          onClick: () => handleClone(skill),
+                        },
+                        {
+                          key: "export",
+                          icon: <ExportOutlined />,
+                          label: "导出…",
+                          onClick: () => handleExport(skill),
+                        },
+                        { type: "divider" },
+                        {
+                          key: "delete",
+                          icon: <DeleteOutlined />,
+                          label: "删除",
+                          danger: true,
+                          onClick: () => handleDelete(skill.id),
+                        },
+                      ],
+                    }}
+                    trigger={["click"]}
+                  >
+                    <Button size="small" icon={<MoreOutlined />}>
+                      更多
+                    </Button>
+                  </Dropdown>
+                </Space>
+              </div>
+            ))}
+          </div>
+        </Spin>
+      )}
+
+      <Modal
+        open={modalOpen}
+        title={draft.content && skills.some((s) => s.id === draft.id) ? "编辑技能" : "新建技能"}
+        onCancel={() => setModalOpen(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setModalOpen(false)}>
+            取消
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={saving}
+            onClick={handleSaveDraft}
+          >
+            保存
+          </Button>,
+        ]}
+        width={760}
+        // Fixed body height keeps the editor visible and prevents the modal
+        // from growing with content. Top form + bottom editor share the space.
+        styles={{ body: { height: "calc(100vh - 200px)", minHeight: 480, padding: 0 } }}
+        destroyOnHidden
+      >
+        <div className="flex h-full flex-col">
+          {/* Top — compact metadata form (single column, fixed height) */}
+          <div
+            className="flex-shrink-0"
+            style={{ padding: "16px 20px", borderBottom: "1px solid #f0f0f0" }}
+          >
+            <Form layout="vertical" style={{ maxWidth: "100%" }}>
+              {/* First row: ID + name side by side */}
+              <div className="flex gap-3">
+                <Form.Item
+                  label="技能 ID"
+                  extra="英文 kebab-case，保存后不可改名"
+                  // Show inline validation only while typing (new skills). When
+                  // editing an existing skill the id is disabled and already
+                  // valid, so we skip the check to avoid a stale error state.
+                  validateStatus={
+                    draft.id && !skills.some((s) => s.id === draft.id)
+                      ? validateSkillId(draft.id)
+                        ? "error"
+                        : "success"
+                      : ""
+                  }
+                  help={
+                    draft.id && !skills.some((s) => s.id === draft.id)
+                      ? validateSkillId(draft.id) ?? undefined
+                      : undefined
+                  }
+                  style={{ marginBottom: 12, flex: 1 }}
+                >
+                  <Input
+                    value={draft.id}
+                    onChange={(e) => setDraft({ ...draft, id: e.target.value })}
+                    placeholder="my-risk-skill"
+                    disabled={skills.some((s) => s.id === draft.id) && !!draft.content}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label="技能名称"
+                  style={{ marginBottom: 12, flex: 1 }}
+                >
+                  <Input
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    placeholder="持仓风险分析"
+                  />
+                </Form.Item>
+                {/* Inline enable switch aligned with the row baseline */}
+                <Form.Item label="启用" style={{ marginBottom: 12, flex: "0 0 auto" }}>
+                  <Switch
+                    checked={draft.enabled}
+                    onChange={(checked) => setDraft({ ...draft, enabled: checked })}
+                  />
+                </Form.Item>
+              </div>
+              <Form.Item
+                label="描述"
+                extra="显示在技能列表与快捷提示中"
+                style={{ marginBottom: 12 }}
+              >
+                <TextArea
+                  value={draft.description}
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  placeholder="分析当前投资组合的风险敞口与集中度"
+                  autoSize={{ minRows: 2, maxRows: 4 }}
+                />
+              </Form.Item>
+              <Form.Item
+                label="触发词"
+                extra="输入后回车或按逗号自动分隔，匹配后自动激活"
+                style={{ marginBottom: 0 }}
+              >
+                <Select
+                  mode="tags"
+                  value={draft.trigger}
+                  onChange={(value) => setDraft({ ...draft, trigger: value })}
+                  tokenSeparators={[",", "，"]}
+                  placeholder="输入触发词后回车，例如：风险"
+                  open={false}
+                  suffixIcon={null}
+                  style={{ width: "100%" }}
+                />
+              </Form.Item>
+            </Form>
+          </div>
+
+          {/* Bottom — full-width Markdown editor / preview fills remaining height */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <div
+              className="flex items-center justify-between flex-shrink-0"
+              style={{ padding: "8px 16px", borderBottom: "1px solid #f0f0f0" }}
+            >
+              <Segmented
+                size="small"
+                value={editorMode}
+                onChange={(v) => setEditorMode(v as "edit" | "preview")}
+                options={[
+                  { label: "编辑", value: "edit", icon: <CodeOutlined /> },
+                  { label: "预览", value: "preview", icon: <EyeOutlined /> },
+                ]}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                激活时作为附加指令注入给 AI
+              </Text>
+            </div>
+            <div className="flex-1 min-h-0 p-3">
+              {editorMode === "edit" ? (
+                <TextArea
+                  value={draft.content}
+                  onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                  placeholder={"# 技能标题\n\n## 任务\n1. ...\n2. ...\n\n## 输出格式\n..."}
+                  style={{
+                    height: "100%",
+                    resize: "none",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                  }}
+                />
+              ) : (
+                <div
+                  className="ai-chat-md"
+                  style={{
+                    height: "100%",
+                    overflow: "auto",
+                    padding: "4px 8px",
+                  }}
+                >
+                  {draft.content.trim() ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {draft.content}
+                    </ReactMarkdown>
+                  ) : (
+                    <Text type="secondary">
+                      没有正文可预览，切回「编辑」开始编写。
+                    </Text>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
+    </Card>
   );
 }
