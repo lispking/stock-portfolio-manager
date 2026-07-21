@@ -126,6 +126,9 @@ export default function DashboardPage() {
                 <Col>
                   <Statistic title="HKD / USD" value={(1 / rates.usd_hkd).toFixed(4)} />
                 </Col>
+                <Col>
+                  <Statistic title="HKD / CNY" value={(rates.usd_cny / rates.usd_hkd).toFixed(4)} />
+                </Col>
               </Row>
             ) : (
               !ratesLoading && <Text type="secondary">暂无汇率数据</Text>
