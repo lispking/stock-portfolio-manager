@@ -65,6 +65,14 @@ export interface StockQuote {
   low: number;
   volume: number;
   updated_at: string;
+  // Fundamental / valuation snapshot (optional, may be absent).
+  pe_ttm?: number;
+  pb?: number;
+  market_cap?: number;
+  dividend_yield?: number;
+  eps?: number;
+  roe?: number;
+  turnover_rate?: number;
 }
 
 export interface HoldingWithQuote extends Holding {

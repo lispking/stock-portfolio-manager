@@ -21,6 +21,7 @@ use crate::services::alert_service;
 use crate::services::exchange_rate_service::{
     convert_currency, get_cached_rates, ExchangeRateCache,
 };
+use crate::services::indicators;
 use crate::services::market_overview_service;
 use crate::services::performance_service::{self, PerformanceFilter};
 use crate::services::quote_provider_service;
@@ -350,6 +351,75 @@ pub fn tool_definitions() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_stock_fundamentals",
+                "description": "获取某只股票的估值与基本面指标：市盈率(PE-TTM)、市净率(PB)、总市值、股息率、每股收益(EPS)、净资产收益率(ROE)、换手率。当用户询问\"这只股票贵不贵\"\"估值\"\"市盈率\"\"市净率\"\"市值\"\"分红\"等估值/基本面问题时调用，是做投资价值分析的关键数据之一。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {
+                            "type": "string",
+                            "description": "股票代码，例如 \"SH600519\"、\"AAPL\"、\"0700.HK\""
+                        },
+                        "market": {
+                            "type": "string",
+                            "enum": ["US", "HK", "CN"],
+                            "description": "市场：US 美股 / HK 港股 / CN A股。可选，不填时按代码格式推断。"
+                        }
+                    },
+                    "required": ["symbol"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_technical_indicators",
+                "description": "获取某只股票的技术面指标：均线(MA5/MA10/MA20/MA60)、MACD(DIF/DEA/柱)、RSI(14)、布林带(上中下轨)。当用户询问\"技术面\"\"均线\"\"MACD\"\"RSI\"\"超买超卖\"\"压力位支撑位\"\"趋势\"等问题时调用。默认基于近 120 个交易日数据。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {
+                            "type": "string",
+                            "description": "股票代码，例如 \"SH600519\"、\"AAPL\"、\"0700.HK\""
+                        },
+                        "market": {
+                            "type": "string",
+                            "enum": ["US", "HK", "CN"],
+                            "description": "市场：US 美股 / HK 港股 / CN A股。可选，不填时按代码格式推断。"
+                        },
+                        "days": {
+                            "type": "integer",
+                            "description": "用于计算指标的交易日天数，默认 120，最大 365。天数越多均线越完整。"
+                        }
+                    },
+                    "required": ["symbol"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_financial_statements",
+                "description": "获取某只 A 股股票近几期财务报表数据：营收、净利润、每股收益(EPS)、净资产收益率(ROE)、资产负债率及同比增速(单位为百分点，如 6.34 表示 +6.34%)。当用户询问\"财务报表\"\"营收\"\"净利润\"\"ROE\"\"负债率\"\"业绩增长\"等基本面财务问题时调用。仅支持 A 股。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {
+                            "type": "string",
+                            "description": "A股股票代码，例如 \"SH600519\"、\"sz000001\""
+                        },
+                        "periods": {
+                            "type": "integer",
+                            "description": "要获取的财报期数，默认 4，最大 8。"
+                        }
+                    },
+                    "required": ["symbol"]
+                }
+            }
+        }),
     ]
 }
 
@@ -425,6 +495,9 @@ pub async fn execute_tool(ctx: &ToolCtx<'_>, name: &str, arguments: &str) -> Too
         "get_dividend_income" => tool_dividend_income(ctx, &args).await,
         "check_price_alerts" => tool_check_alerts(ctx).await,
         "get_option_positions" => tool_option_positions(ctx, &args).await,
+        "get_stock_fundamentals" => tool_stock_fundamentals(ctx, &args).await,
+        "get_technical_indicators" => tool_technical_indicators(ctx, &args).await,
+        "get_financial_statements" => tool_financial_statements(ctx, &args).await,
         other => ToolResult::err_json(format!("未知工具：{other}")),
     }
 }
@@ -493,6 +566,146 @@ async fn tool_stock_quote(ctx: &ToolCtx<'_>, args: &Value) -> ToolResult {
             ToolResult::ok_json(json!(q))
         }
         Err(e) => ToolResult::err_json(format!("获取 {symbol} 行情失败：{e}")),
+    }
+}
+
+/// Resolve a symbol + optional market argument into (symbol, market, provider).
+fn resolve_symbol_market(
+    ctx: &ToolCtx<'_>,
+    args: &Value,
+) -> Result<(String, String, String), ToolResult> {
+    let symbol = match args.get("symbol").and_then(|v| v.as_str()) {
+        Some(s) => s.trim().to_string(),
+        None => return Err(ToolResult::err_json("缺少参数 symbol")),
+    };
+    if symbol.is_empty() {
+        return Err(ToolResult::err_json("symbol 不能为空"));
+    }
+    let market = args
+        .get("market")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_uppercase())
+        .unwrap_or_else(|| infer_market(&symbol).to_string());
+    let config = match quote_provider_service::get_quote_provider_config(ctx.db) {
+        Ok(c) => c,
+        Err(e) => return Err(ToolResult::err_json(format!("读取行情源配置失败：{e}"))),
+    };
+    let provider = match market.as_str() {
+        "HK" => config.hk_provider,
+        "CN" => config.cn_provider,
+        _ => config.us_provider,
+    };
+    Ok((symbol, market, provider))
+}
+
+async fn tool_stock_fundamentals(ctx: &ToolCtx<'_>, args: &Value) -> ToolResult {
+    let (symbol, market, provider) = match resolve_symbol_market(ctx, args) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let quote = match market.as_str() {
+        "HK" => quote_service::fetch_hk_quote_with_provider(&symbol, &provider).await,
+        "CN" => quote_service::fetch_cn_quote_with_provider(&symbol, &provider).await,
+        _ => quote_service::fetch_us_quote_with_provider(&symbol, &provider).await,
+    };
+    match quote {
+        Ok(q) => ToolResult::ok_json(json!({
+            "symbol": q.symbol,
+            "name": q.name,
+            "market": q.market,
+            "current_price": q.current_price,
+            "pe_ttm": q.pe_ttm,
+            "pb": q.pb,
+            "market_cap": q.market_cap,
+            "dividend_yield": q.dividend_yield,
+            "eps": q.eps,
+            "roe": q.roe,
+            "turnover_rate": q.turnover_rate,
+        })),
+        Err(e) => ToolResult::err_json(format!("获取 {symbol} 基本面失败：{e}")),
+    }
+}
+
+async fn tool_technical_indicators(ctx: &ToolCtx<'_>, args: &Value) -> ToolResult {
+    let (symbol, market, provider) = match resolve_symbol_market(ctx, args) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let days = args
+        .get("days")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(120)
+        .clamp(30, 365) as usize;
+    let end = Utc::now().date_naive();
+    let start = end - Duration::days((days as i64) * 2);
+    let candles =
+        match quote_service::fetch_stock_candles(&symbol, &market, start, end, &provider).await {
+            Ok(c) => c,
+            Err(e) => return ToolResult::err_json(format!("获取 {symbol} K线失败：{e}")),
+        };
+    if candles.len() < 20 {
+        return ToolResult::ok_json(json!({
+            "symbol": symbol,
+            "note": format!("可用交易日仅 {} 个，不足以计算技术指标", candles.len()),
+        }));
+    }
+    // Latest values of each indicator (the model wants the current reading).
+    let last = candles.len() - 1;
+    let ma5 = indicators::sma(&candles, 5)[last];
+    let ma10 = indicators::sma(&candles, 10)[last];
+    let ma20 = indicators::sma(&candles, 20)[last];
+    let ma60 = if candles.len() >= 60 {
+        indicators::sma(&candles, 60)[last]
+    } else {
+        None
+    };
+    let macd = indicators::macd(&candles, 12, 26, 9);
+    let macd_last = macd[last];
+    let rsi = indicators::rsi(&candles, 14)[last];
+    let boll = indicators::bollinger(&candles, 20, 2.0);
+    let boll_last = boll[last];
+    ToolResult::ok_json(json!({
+        "symbol": symbol,
+        "market": market,
+        "data_points": candles.len(),
+        "latest_close": candles[last].close,
+        "latest_date": candles[last].date,
+        "ma5": ma5,
+        "ma10": ma10,
+        "ma20": ma20,
+        "ma60": ma60,
+        "macd_dif": macd_last.dif,
+        "macd_dea": macd_last.dea,
+        "macd_histogram": macd_last.histogram,
+        "rsi14": rsi,
+        "bollinger_middle": boll_last.middle,
+        "bollinger_upper": boll_last.upper,
+        "bollinger_lower": boll_last.lower,
+    }))
+}
+
+async fn tool_financial_statements(_ctx: &ToolCtx<'_>, args: &Value) -> ToolResult {
+    let symbol = match args.get("symbol").and_then(|v| v.as_str()) {
+        Some(s) => s.trim().to_string(),
+        None => return ToolResult::err_json("缺少参数 symbol"),
+    };
+    if symbol.is_empty() {
+        return ToolResult::err_json("symbol 不能为空");
+    }
+    let periods = args
+        .get("periods")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(4)
+        .clamp(1, 8) as usize;
+    let market = infer_market(&symbol).to_string();
+    match quote_service::fetch_financial_statements(&symbol, &market, periods).await {
+        Ok(reports) if !reports.is_empty() => {
+            ToolResult::ok_json(json!({ "symbol": symbol, "market": market, "periods": reports }))
+        }
+        Ok(_) => ToolResult::ok_json(
+            json!({ "symbol": symbol, "market": market, "note": "未查到财务报表数据" }),
+        ),
+        Err(e) => ToolResult::err_json(format!("获取 {symbol} 财务报表失败：{e}")),
     }
 }
 
@@ -920,7 +1133,7 @@ mod tests {
     #[test]
     fn tool_definitions_are_valid_json() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 17);
+        assert_eq!(defs.len(), 20);
         for d in &defs {
             assert_eq!(d["type"], "function");
             assert!(d["function"]["name"].is_string());
@@ -936,7 +1149,7 @@ mod tests {
             .iter()
             .map(|d| d["function"]["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names.len(), 17);
+        assert_eq!(names.len(), 20);
     }
 
     #[test]

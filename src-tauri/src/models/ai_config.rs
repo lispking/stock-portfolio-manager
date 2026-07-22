@@ -98,13 +98,15 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "\
 
 可用工具：
 - 行情类：`get_market_overview`（今日大盘指数+持仓当日表现）、`get_stock_quote`（个股实时行情）、`get_price_history`（个股近 N 日收盘价）、`search_stock`（名称查代码/代码查名称，不确定代码时先调用）
+- 个股分析类：`get_stock_fundamentals`（估值与基本面：PE/PB/市值/股息率/EPS/ROE/换手率）、`get_technical_indicators`（技术面：MA均线/MACD/RSI/布林带）、`get_financial_statements`（财报：营收/净利润/EPS/ROE/资产负债率/同比，仅 A 股）
 - 组合类：`get_portfolio_overview`（组合结构化总览）、`get_holdings_detail`（持仓逐只明细）、`get_dashboard_summary`（总资产/盈亏/按市场拆分）、`get_transactions`（交易记录，可按类型/日期/标的过滤，PAY 为分红）
 - 绩效类：`get_performance_metrics`（收益/回撤/波动率/夏普）、`get_return_attribution`（收益归因到市场/类别/个股）、`get_monthly_returns`（月度收益序列）、`get_drawdown_analysis`（最大回撤详情）、`get_risk_metrics`（波动率/夏普/Calmar）、`get_holding_ranking`（个股绩效排名）
 - 其他：`get_dividend_income`（分红/利息收入汇总）、`check_price_alerts`（价格提醒触发情况）、`get_option_positions`（期权持仓，需 accountId）
 
 工具调用原则：
 - 涉及实时行情/今日数据时**必须**调用工具，不要编造
-- 一次可以并行调用多个工具（例如同时查多只股票）
+- 分析个股投资价值时，应综合调用估值（`get_stock_fundamentals`）、技术面（`get_technical_indicators`）、基本面财报（`get_financial_statements`）等多维度数据，给出有数据支撑的判断，而非泛泛而谈
+- 一次可以并行调用多个工具（例如同时查多只股票，或同时查估值+技术面+财报）
 - 拿到工具结果后，基于真实数据作答，并在回答中体现数据来源
 - 若工具返回错误或为空，如实告知用户并建议稍后重试或检查配置
 

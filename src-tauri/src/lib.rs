@@ -48,6 +48,10 @@ pub fn run() {
             let db_path = app_dir.join("portfolio.db");
             let db =
                 Database::new(db_path.to_str().unwrap()).expect("failed to initialize database");
+            // Register the DB path so quote_service can fall back to reading
+            // the user-configured Xueqiu cookie from the database when the
+            // in-memory copy is empty (e.g. right after a restart).
+            services::quote_service::register_db_path(db_path.to_str().unwrap().to_string());
             app.manage(db);
             app.manage(ExchangeRateCache::new());
             app.manage(QuoteCache::new());

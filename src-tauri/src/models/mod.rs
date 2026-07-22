@@ -22,7 +22,8 @@ pub use category::Category;
 pub use dashboard::{DashboardSummary, HoldingDetail};
 pub use holding::Holding;
 pub use quote::{
-    DailyHoldingSnapshot, DailyPortfolioValue, ExchangeRates, HoldingWithQuote, StockQuote,
+    DailyHoldingSnapshot, DailyPortfolioValue, ExchangeRates, FinancialReport, HoldingWithQuote,
+    PriceCandle, StockQuote,
 };
 pub use statistics::{
     AccountStatistics, CategoryStatistics, MarketStatistics, PieSlice, PnlItem, StatisticsOverview,

@@ -1,11 +1,11 @@
 use crate::db::Database;
-use crate::models::StockQuote;
+use crate::models::{FinancialReport, PriceCandle, StockQuote};
 use crate::services::http_client;
 use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
@@ -68,6 +68,7 @@ pub fn make_cash_quote(symbol: &str, market: &str) -> StockQuote {
         low: 1.0,
         volume: 0,
         updated_at: Utc::now().to_rfc3339(),
+        ..Default::default()
     }
 }
 
@@ -180,6 +181,7 @@ pub fn load_quotes_from_db(db: &Database) -> Result<Vec<StockQuote>, String> {
                 low: row.get(8)?,
                 volume: row.get(9)?,
                 updated_at: row.get(10)?,
+                ..Default::default()
             })
         })
         .map_err(|e| e.to_string())?;
@@ -442,6 +444,7 @@ pub async fn fetch_yahoo_quote(symbol: &str, market: &str) -> Result<StockQuote,
         low: meta.regular_market_day_low.unwrap_or(0.0),
         volume,
         updated_at: Utc::now().to_rfc3339(),
+        ..Default::default()
     })
 }
 
@@ -514,9 +517,7 @@ pub async fn fetch_hk_quote_with_provider(
                             "fetch_hk_quote: EastMoney also failed for {}: {}, falling back to yahoo",
                             symbol, e2
                         );
-                        let yahoo_symbol = if symbol.ends_with(".HK")
-                            || symbol.ends_with(".hk")
-                        {
+                        let yahoo_symbol = if symbol.ends_with(".HK") || symbol.ends_with(".hk") {
                             symbol.to_string()
                         } else {
                             format!("{}.HK", symbol)
@@ -630,7 +631,7 @@ struct EastMoneyResponse {
 /// All numeric fields use `f64` so they can accept both JSON integers and
 /// JSON floats (e.g. `30279` and `30279.0`) — serde rejects JSON floats
 /// when deserializing as `u64`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct EastMoneyData {
     /// Current price
     f43: Option<f64>,
@@ -649,6 +650,15 @@ struct EastMoneyData {
     f169: Option<f64>,
     /// Change percentage
     f170: Option<f64>,
+    // ── Fundamentals (added for investment analysis) ──
+    /// P/E ratio (TTM)
+    f163: Option<f64>,
+    /// P/B ratio
+    f167: Option<f64>,
+    /// Total market capitalisation (元)
+    f116: Option<f64>,
+    /// Turnover rate (percent)
+    f168: Option<f64>,
 }
 
 /// Fetch a CN A-share stock quote from East Money (东方财富).
@@ -658,7 +668,7 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
     let symbol = symbol.to_lowercase();
     let secid = to_eastmoney_secid(&symbol)?;
     let url = format!(
-        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170,f163,f167,f116,f168&secid={}",
         secid
     );
 
@@ -689,7 +699,7 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
 async fn fetch_eastmoney_us_quote(symbol: &str) -> Result<StockQuote, String> {
     let secid = to_eastmoney_us_secid(symbol);
     let url = format!(
-        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170,f163,f167,f116,f168&secid={}",
         secid
     );
 
@@ -720,7 +730,7 @@ async fn fetch_eastmoney_us_quote(symbol: &str) -> Result<StockQuote, String> {
 async fn fetch_eastmoney_hk_quote(symbol: &str) -> Result<StockQuote, String> {
     let secid = to_eastmoney_hk_secid(symbol)?;
     let url = format!(
-        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170,f163,f167,f116,f168&secid={}",
         secid
     );
 
@@ -763,7 +773,7 @@ pub async fn fetch_index_quote_eastmoney(
     market: &str,
 ) -> Result<StockQuote, String> {
     let url = format!(
-        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170,f163,f167,f116,f168&secid={}",
         secid
     );
     let response = send_eastmoney_request(&url, display_symbol).await?;
@@ -885,6 +895,13 @@ fn parse_eastmoney_quote(
         low,
         volume,
         updated_at: Utc::now().to_rfc3339(),
+        pe_ttm: data.f163,
+        pb: data.f167,
+        market_cap: data.f116,
+        dividend_yield: None,
+        eps: None,
+        roe: None,
+        turnover_rate: data.f168,
     })
 }
 
@@ -903,6 +920,68 @@ static XUEQIU_USER_COOKIE: Mutex<Option<String>> = Mutex::new(None);
 /// When set, it is appended alongside `xq_a_token` in the Cookie header
 /// to authenticate kline API requests.
 static XUEQIU_USER_U: Mutex<Option<String>> = Mutex::new(None);
+
+/// Path to the SQLite database file, registered at startup so that the
+/// Xueqiu cookie/u can be re-read from the `quote_provider_config` table when
+/// the in-memory copies are empty (e.g. right after an app restart, before any
+/// command has synced them). See [`load_xueqiu_creds_from_db`].
+static APP_DB_PATH: OnceLock<String> = OnceLock::new();
+
+/// Register the database path once at startup (called from `lib.rs`).
+///
+/// This lets [`get_xueqiu_user_cookie`] / [`get_xueqiu_user_u`] fall back to
+/// the database when their in-memory statics are `None`, so that user-provided
+/// cookies work regardless of call path (quote commands, AI tools, background
+/// refresh) without each entry point having to call `set_xueqiu_user_cookie`.
+pub fn register_db_path(path: impl Into<String>) {
+    let _ = APP_DB_PATH.set(path.into());
+}
+
+/// Read the Xueqiu cookie and `u` value straight from the
+/// `quote_provider_config` table. Returns `(None, None)` when the DB path is
+/// unknown or the row/columns are absent. Uses a fresh short-lived read-only
+/// connection so it never contends with the main connection for long.
+fn load_xueqiu_creds_from_db() -> (Option<String>, Option<String>) {
+    let path = match APP_DB_PATH.get() {
+        Some(p) => p,
+        None => return (None, None),
+    };
+    let conn = match rusqlite::Connection::open(path) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("load_xueqiu_creds_from_db: failed to open DB: {e}");
+            return (None, None);
+        }
+    };
+    let row = conn.query_row(
+        "SELECT xueqiu_cookie, xueqiu_u FROM quote_provider_config WHERE id = 1",
+        [],
+        |r| {
+            let cookie: Option<String> = r.get(0).ok().flatten();
+            let u_val: Option<String> = r.get(1).ok().flatten();
+            Ok((cookie, u_val))
+        },
+    );
+    match row {
+        Ok(pair) => normalize_creds(pair),
+        Err(rusqlite::Error::QueryReturnedNoRows) => (None, None),
+        Err(e) => {
+            warn!("load_xueqiu_creds_from_db: query failed: {e}");
+            (None, None)
+        }
+    }
+}
+
+/// Trim and drop empty strings, mirroring [`set_xueqiu_user_cookie`].
+fn normalize_creds(pair: (Option<String>, Option<String>)) -> (Option<String>, Option<String>) {
+    let norm = |s: Option<String>| {
+        s.as_deref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    };
+    (norm(pair.0), norm(pair.1))
+}
 
 /// Auto-obtained `xq_a_token` value extracted from the homepage response.
 ///
@@ -953,8 +1032,17 @@ pub fn set_xueqiu_user_cookie(cookie: Option<String>) {
 }
 
 /// Return a clone of the current user-provided Xueqiu cookie, if any.
+///
+/// Falls back to reading the `quote_provider_config` table from the database
+/// when the in-memory copy is `None` (e.g. right after an app restart). This
+/// guarantees that user-configured cookies are honoured regardless of which
+/// entry point triggers a quote request.
 fn get_xueqiu_user_cookie() -> Option<String> {
-    XUEQIU_USER_COOKIE.lock().unwrap().clone()
+    let cached = XUEQIU_USER_COOKIE.lock().unwrap().clone();
+    if cached.is_some() {
+        return cached;
+    }
+    load_xueqiu_creds_from_db().0
 }
 
 /// Set (or clear) the user-provided Xueqiu `u` cookie value.
@@ -968,8 +1056,14 @@ pub fn set_xueqiu_user_u(u_value: Option<String>) {
 }
 
 /// Return a clone of the current user-provided Xueqiu `u` cookie value, if any.
+///
+/// Falls back to the database like [`get_xueqiu_user_cookie`].
 fn get_xueqiu_user_u() -> Option<String> {
-    XUEQIU_USER_U.lock().unwrap().clone()
+    let cached = XUEQIU_USER_U.lock().unwrap().clone();
+    if cached.is_some() {
+        return cached;
+    }
+    load_xueqiu_creds_from_db().1
 }
 
 /// Ensure the Xueqiu HTTP client has a valid session token.
@@ -1191,7 +1285,7 @@ struct XueqiuData {
 }
 
 /// Xueqiu quote fields.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct XueqiuQuote {
     /// Stock name (e.g. "贵州茅台", "Apple Inc.")
     name: Option<String>,
@@ -1209,6 +1303,19 @@ struct XueqiuQuote {
     low: Option<f64>,
     /// Volume
     volume: Option<f64>,
+    // ── Fundamentals (Xueqiu returns these in the same quote payload) ──
+    /// P/E ratio (TTM)
+    pe_ttm: Option<f64>,
+    /// P/B ratio
+    pb: Option<f64>,
+    /// Total market capitalisation
+    market_capital: Option<f64>,
+    /// Dividend yield (fraction, e.g. 0.025 = 2.5%)
+    dividend_yield: Option<f64>,
+    /// Earnings per share
+    eps: Option<f64>,
+    /// Turnover rate (percent)
+    turnover_rate: Option<f64>,
 }
 
 /// Xueqiu kline (historical candlestick) API response wrapper.
@@ -1283,6 +1390,9 @@ fn parse_xueqiu_quote(
     let low = quote.low.unwrap_or(0.0);
     let volume = quote.volume.unwrap_or(0.0) as i64;
 
+    // Xueqiu's dividend_yield is a fraction (e.g. 0.025); convert to percent.
+    let dividend_yield = quote.dividend_yield.map(|y| y * 100.0);
+
     Ok(StockQuote {
         symbol: symbol.to_string(),
         name,
@@ -1295,6 +1405,13 @@ fn parse_xueqiu_quote(
         low,
         volume,
         updated_at: Utc::now().to_rfc3339(),
+        pe_ttm: quote.pe_ttm,
+        pb: quote.pb,
+        market_cap: quote.market_capital,
+        dividend_yield,
+        eps: quote.eps,
+        roe: None,
+        turnover_rate: quote.turnover_rate,
     })
 }
 
@@ -1696,7 +1813,310 @@ pub async fn fetch_stock_history_eastmoney(
     Ok(result)
 }
 
-/// Fetch historical daily closing prices for a stock from Xueqiu (雪球).
+/// Fetch historical daily OHLCV candles from East Money.
+///
+/// Reuses the same kline endpoint as [`fetch_stock_history_eastmoney`] but
+/// parses the full candle (open/high/low/close/volume) instead of just the
+/// close, for use by technical-analysis indicators.
+pub async fn fetch_candles_eastmoney(
+    symbol: &str,
+    market: &str,
+    start_date: chrono::NaiveDate,
+    end_date: chrono::NaiveDate,
+) -> Result<Vec<PriceCandle>, String> {
+    let secid = match market {
+        "HK" => to_eastmoney_hk_secid(symbol)?,
+        "US" => to_eastmoney_us_secid(symbol),
+        "CN" => to_eastmoney_secid(&symbol.to_lowercase())?,
+        _ => {
+            return Err(format!(
+                "Unsupported market '{}' for East Money candles",
+                market
+            ))
+        }
+    };
+
+    let beg = start_date.format("%Y%m%d").to_string();
+    let end = end_date.format("%Y%m%d").to_string();
+    let url = format!(
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=0&beg={}&end={}",
+        secid, beg, end
+    );
+
+    let resp = send_eastmoney_request(&url, symbol).await?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "fetch_candles_eastmoney: HTTP {} for {}",
+            resp.status(),
+            symbol
+        ));
+    }
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("fetch_candles_eastmoney: read error for {}: {}", symbol, e))?;
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| format!("fetch_candles_eastmoney: parse error for {}: {}", symbol, e))?;
+
+    // Each kline: "date,open,close,high,low,volume,amount,amplitude,chg_pct,chg_amt,turnover"
+    let klines = json["data"]["klines"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    let mut candles = Vec::with_capacity(klines.len());
+    for kline in &klines {
+        if let Some(line) = kline.as_str() {
+            let parts: Vec<&str> = line.split(',').collect();
+            // parts: [0]date [1]open [2]close [3]high [4]low [5]volume
+            if parts.len() >= 6 {
+                if let Ok(date) = chrono::NaiveDate::parse_from_str(parts[0], "%Y-%m-%d") {
+                    let open = parts[1].parse::<f64>().unwrap_or(0.0);
+                    let close = parts[2].parse::<f64>().unwrap_or(0.0);
+                    let high = parts[3].parse::<f64>().unwrap_or(0.0);
+                    let low = parts[4].parse::<f64>().unwrap_or(0.0);
+                    let volume = parts[5].parse::<f64>().unwrap_or(0.0);
+                    candles.push(PriceCandle {
+                        date: date.format("%Y-%m-%d").to_string(),
+                        open,
+                        close,
+                        high,
+                        low,
+                        volume,
+                    });
+                }
+            }
+        }
+    }
+    Ok(candles)
+}
+
+/// Fetch historical daily OHLCV candles from Xueqiu.
+///
+/// Mirrors [`fetch_stock_history_xueqiu`] but retains open/high/low/close/volume
+/// for technical-analysis indicators.
+pub async fn fetch_candles_xueqiu(
+    symbol: &str,
+    market: &str,
+    start_date: chrono::NaiveDate,
+    end_date: chrono::NaiveDate,
+) -> Result<Vec<PriceCandle>, String> {
+    let xueqiu_symbol = match market {
+        "CN" => to_xueqiu_cn_symbol(symbol)?,
+        "HK" => to_xueqiu_hk_symbol(symbol)?,
+        _ => to_xueqiu_us_symbol(symbol),
+    };
+
+    // Xueqiu kline: begin = end timestamp in ms, returns newest-first; we use a
+    // large window and trim. period="daily".
+    let begin = (end_date.and_hms_opt(15, 0, 0).unwrap())
+        .and_utc()
+        .timestamp_millis();
+    let window_ms = (end_date - start_date).num_days().max(1) * 86_400_000 + 86_400_000;
+    let url = format!(
+        "https://stock.xueqiu.com/v5/stock/chart/kline.json?symbol={}&begin={}&period=day&type=before&count=-{}",
+        xueqiu_symbol, begin, window_ms / 86_400_000 + 10
+    );
+
+    let resp = send_xueqiu_request(&url, symbol).await?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "fetch_candles_xueqiu: HTTP {} for {}",
+            resp.status(),
+            symbol
+        ));
+    }
+    let body: XueqiuKlineResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("fetch_candles_xueqiu: parse error for {}: {}", symbol, e))?;
+
+    let data = match body.data {
+        Some(d) => d,
+        None => return Ok(Vec::new()),
+    };
+    let (columns, items) = match (data.column, data.item) {
+        (Some(c), Some(i)) => (c, i),
+        _ => return Ok(Vec::new()),
+    };
+
+    // Locate columns by name.
+    let idx_of = |name: &str| columns.iter().position(|c| c == name);
+    let ts_i = idx_of("timestamp");
+    let open_i = idx_of("open");
+    let high_i = idx_of("high");
+    let low_i = idx_of("low");
+    let close_i = idx_of("close");
+    let vol_i = idx_of("volume");
+    let (ts_i, close_i) = match (ts_i, close_i) {
+        (Some(t), Some(c)) => (t, c),
+        _ => return Ok(Vec::new()),
+    };
+
+    let as_f64 = |v: &serde_json::Value| v.as_f64().unwrap_or(0.0);
+    let mut candles: Vec<PriceCandle> = items
+        .iter()
+        .rev() // Xueqiu is newest-first; flip to oldest-first
+        .filter_map(|row| {
+            let ts = row.get(ts_i)?.as_i64()?;
+            let date = chrono::DateTime::from_timestamp_millis(ts)?.date_naive();
+            Some(PriceCandle {
+                date: date.format("%Y-%m-%d").to_string(),
+                open: open_i.and_then(|i| row.get(i)).map(as_f64).unwrap_or(0.0),
+                close: row.get(close_i).map(as_f64).unwrap_or(0.0),
+                high: high_i.and_then(|i| row.get(i)).map(as_f64).unwrap_or(0.0),
+                low: low_i.and_then(|i| row.get(i)).map(as_f64).unwrap_or(0.0),
+                volume: vol_i.and_then(|i| row.get(i)).map(as_f64).unwrap_or(0.0),
+            })
+        })
+        .collect();
+    // Trim to the requested start (inclusive).
+    let start_s = start_date.format("%Y-%m-%d").to_string();
+    while candles.first().is_some_and(|c| c.date < start_s) {
+        candles.remove(0);
+    }
+    Ok(candles)
+}
+
+/// Fetch historical daily OHLCV candles for a stock across providers.
+///
+/// Dispatches by provider with a resilient fallback chain mirroring
+/// [`fetch_stock_history`]: xueqiu → eastmoney → yahoo (yahoo path returns
+/// close-only candles when OHLCV is unavailable).
+pub async fn fetch_stock_candles(
+    symbol: &str,
+    market: &str,
+    start_date: chrono::NaiveDate,
+    end_date: chrono::NaiveDate,
+    provider: &str,
+) -> Result<Vec<PriceCandle>, String> {
+    match provider {
+        "xueqiu" => match fetch_candles_xueqiu(symbol, market, start_date, end_date).await {
+            Ok(c) if !c.is_empty() => Ok(c),
+            Ok(_) | Err(_) => {
+                match fetch_candles_eastmoney(symbol, market, start_date, end_date).await {
+                    Ok(c) if !c.is_empty() => Ok(c),
+                    Ok(_) => Ok(Vec::new()),
+                    Err(e) => Err(e),
+                }
+            }
+        },
+        "eastmoney" => fetch_candles_eastmoney(symbol, market, start_date, end_date).await,
+        _ => fetch_candles_eastmoney(symbol, market, start_date, end_date).await,
+    }
+}
+
+/// Strip a CN symbol's market prefix to get the bare 6-digit code.
+/// `"sh600519"` → `"600519"`; `"600519"` → `"600519"`.
+fn cn_bare_code(symbol: &str) -> String {
+    let s = symbol.to_lowercase();
+    let s = s.trim_start_matches("sh").trim_start_matches("sz");
+    s.trim_start_matches("bj").to_string()
+}
+
+/// Fetch recent financial-statement periods (最近 N 期财报) from East Money's
+/// datacenter API.
+///
+/// Currently only supports CN A-shares (the datacenter `SECURITY_CODE` is the
+/// 6-digit code). Returns the most recent `limit` periods (default 4), newest
+/// first. No authentication is required.
+pub async fn fetch_financial_statements(
+    symbol: &str,
+    market: &str,
+    limit: usize,
+) -> Result<Vec<FinancialReport>, String> {
+    if market != "CN" {
+        return Err(format!(
+            "财务报表查询暂仅支持 A 股，{} 的市场为 {}",
+            symbol, market
+        ));
+    }
+    let code = cn_bare_code(symbol);
+    if code.len() != 6 || !code.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("无效的 A 股代码用于财务报表查询: {}", symbol));
+    }
+
+    let columns = "REPORT_DATE,REPORT_DATE_NAME,EPSJB,ROEJQ,OPERATE_INCOME_PK,TOTALOPERATEREVETZ,\
+PARENTNETPROFIT,PARENTNETPROFITTZ,TOTAL_ASSETS_PK,INTEREST_DEBT_RATIO";
+    let url = format!(
+        "https://datacenter.eastmoney.com/securities/api/data/v1/get?\
+reportName=RPT_F10_FINANCE_MAINFINADATA&columns={}&filter=(SECURITY_CODE=\"{}\")\
+&pageSize={}&sortColumns=REPORT_DATE&sortTypes=-1",
+        columns, code, limit
+    );
+
+    let resp = http_client::eastmoney_client()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("查询东方财富财务报表失败: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "fetch_financial_statements: HTTP {} for {}",
+            resp.status(),
+            symbol
+        ));
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("fetch_financial_statements: 解析失败 for {}: {}", symbol, e))?;
+
+    if !body
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        let msg = body
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("未知错误");
+        return Err(format!("东方财富财务报表查询失败 for {}: {}", symbol, msg));
+    }
+
+    let rows = body["result"]["data"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    let parse_date = |s: &str| -> String {
+        // "2026-03-31 00:00:00" -> "2026-03-31"
+        s.split_whitespace().next().unwrap_or(s).to_string()
+    };
+    let as_f64 = |v: &serde_json::Value| -> Option<f64> {
+        v.as_f64()
+            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    };
+
+    let reports = rows
+        .iter()
+        .map(|r| {
+            let report_date = r
+                .get("REPORT_DATE")
+                .and_then(|v| v.as_str())
+                .map(parse_date)
+                .unwrap_or_default();
+            FinancialReport {
+                period_name: r
+                    .get("REPORT_DATE_NAME")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                report_date,
+                eps: r.get("EPSJB").and_then(as_f64),
+                roe: r.get("ROEJQ").and_then(as_f64),
+                revenue: r.get("OPERATE_INCOME_PK").and_then(as_f64),
+                revenue_yoy: r.get("TOTALOPERATEREVETZ").and_then(as_f64),
+                net_profit: r.get("PARENTNETPROFIT").and_then(as_f64),
+                net_profit_yoy: r.get("PARENTNETPROFITTZ").and_then(as_f64),
+                total_assets: r.get("TOTAL_ASSETS_PK").and_then(as_f64),
+                debt_ratio: r.get("INTEREST_DEBT_RATIO").and_then(as_f64),
+            }
+        })
+        .collect();
+    Ok(reports)
+}
+
 /// Uses the Xueqiu kline API (`/v5/stock/chart/kline.json`).
 /// Returns a list of (date, close_price) pairs sorted by date ascending.
 pub async fn fetch_stock_history_xueqiu(
@@ -1958,6 +2378,7 @@ mod tests {
                 f60: Some(prev_close),
                 f169: Some(change),
                 f170: Some(change_pct),
+                ..Default::default()
             }),
         }
     }
@@ -2009,6 +2430,7 @@ mod tests {
                 f60: Some(1690.00),
                 f169: Some(20.50),
                 f170: Some(1.21),
+                ..Default::default()
             }),
         };
         let result = parse_eastmoney_quote("sh600519", "CN", resp);
@@ -2172,6 +2594,7 @@ mod tests {
                 f60: Some(1000.00),
                 f169: None,
                 f170: None,
+                ..Default::default()
             }),
         };
         let result = parse_eastmoney_quote("sh600519", "CN", resp);
@@ -2340,6 +2763,7 @@ mod tests {
             low: 94.0,
             volume: 1000000,
             updated_at: Utc::now().to_rfc3339(),
+            ..Default::default()
         }
     }
 
@@ -2878,6 +3302,7 @@ mod tests {
                     high: Some(high),
                     low: Some(low),
                     volume: Some(volume),
+                    ..Default::default()
                 }),
             }),
             error_code: Some(0),
@@ -2984,6 +3409,7 @@ mod tests {
                     high: Some(1720.00),
                     low: Some(1685.00),
                     volume: Some(12345.0),
+                    ..Default::default()
                 }),
             }),
             error_code: Some(0),
@@ -3019,6 +3445,7 @@ mod tests {
                     high: Some(1200.00),
                     low: Some(950.00),
                     volume: Some(99999.0),
+                    ..Default::default()
                 }),
             }),
             error_code: Some(0),

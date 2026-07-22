@@ -308,3 +308,46 @@ body {
   white-space: pre;
 }
 
+/* Translated key-value result view for investment-analysis tools. */
+.ai-tool-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+}
+.ai-tool-field {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  line-height: 1.7;
+}
+.ai-tool-field-label {
+  color: #6b7280;
+  flex-shrink: 0;
+  min-width: 108px;
+}
+.ai-tool-field-value {
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+.ai-tool-field-group {
+  color: #9ca3af;
+  font-size: 11px;
+  margin-top: 6px;
+  margin-bottom: 1px;
+  border-top: 1px dashed #e5e7eb;
+  padding-top: 4px;
+}
+.ai-tool-field-group:first-child {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
+.ai-tool-field-period {
+  margin-top: 4px;
+}
+.ai-tool-note {
+  color: #6b7280;
+  font-size: 12.5px;
+}
+
