@@ -345,6 +345,61 @@ fn map_transaction(row: &rusqlite::Row<'_>) -> rusqlite::Result<Transaction> {
     })
 }
 
+/// Flexible transaction query for the AI tools layer. Filters are all
+/// optional and combined with AND; results are newest-first, capped at `limit`
+/// (default 50, max 200) so a tool call can't dump the entire history into the
+/// model's context.
+///
+/// `tx_type` is matched case-insensitively against `transaction_type`
+/// (BUY/SELL/OPEN/PAY). `days` restricts to the last N days (traded_at >= now
+/// minus days). This is a plain `&Database` function (no Tauri State) so it can
+/// be called from `ai_tools::execute_tool` directly.
+pub fn query_transactions_inner(
+    db: &Database,
+    account_id: Option<&str>,
+    symbol: Option<&str>,
+    tx_type: Option<&str>,
+    days: Option<i64>,
+    limit: Option<usize>,
+) -> Result<Vec<Transaction>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut sql = String::from(
+        "SELECT id, holding_id, account_id, symbol, name, market, transaction_type,
+                shares, price, total_amount, commission, currency, traded_at, notes, created_at
+         FROM transactions WHERE 1=1",
+    );
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(aid) = account_id {
+        sql.push_str(" AND account_id = ?");
+        params.push(Box::new(aid.to_string()));
+    }
+    if let Some(sym) = symbol {
+        sql.push_str(" AND UPPER(symbol) = UPPER(?)");
+        params.push(Box::new(sym.to_string()));
+    }
+    if let Some(t) = tx_type {
+        sql.push_str(" AND UPPER(transaction_type) = UPPER(?)");
+        params.push(Box::new(t.to_string()));
+    }
+    if let Some(d) = days {
+        sql.push_str(" AND traded_at >= ?");
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(d);
+        params.push(Box::new(cutoff.to_rfc3339()));
+    }
+    sql.push_str(" ORDER BY traded_at DESC LIMIT ?");
+    let cap = limit.unwrap_or(50).min(200);
+    params.push(Box::new(cap as i64));
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let rows = stmt
+        .query_map(param_refs.as_slice(), map_transaction)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
 #[tauri::command(rename_all = "camelCase")]
 #[allow(clippy::too_many_arguments)]
 pub fn update_transaction(

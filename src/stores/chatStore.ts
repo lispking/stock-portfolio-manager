@@ -470,6 +470,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }).catch((e) => {
       console.error("[chatStore] failed to bind ai-chat-skill listener", e);
     });
+
+    // The backend tells us which data tools it just executed for the in-flight
+    // turn (e.g. get_market_overview, get_stock_quote). Tool calls can happen
+    // across multiple rounds within one turn, so we accumulate names (deduped,
+    // order-preserving) rather than replacing them — the badge grows to reflect
+    // every fetch that informed the final answer.
+    listen<string[]>("ai-chat-tool", (event) => {
+      const names = event.payload;
+      if (!Array.isArray(names) || names.length === 0 || !streamingId) return;
+      applyStreamUpdate(set, (m) => {
+        const seen = new Set(m.usedTools ?? []);
+        const merged = [...(m.usedTools ?? [])];
+        for (const n of names) {
+          if (!seen.has(n)) {
+            seen.add(n);
+            merged.push(n);
+          }
+        }
+        return { ...m, usedTools: merged };
+      });
+    }).catch((e) => {
+      console.error("[chatStore] failed to bind ai-chat-tool listener", e);
+    });
   },
 
   loadSessionMessages: async (sessionId) => {
@@ -836,7 +859,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // messages belong to a different session and must be preserved.
     const wipeView = bg?.sessionId !== sessionId;
     set({
-      ...(wipeView ? {} : { messages: [] }),
+      ...(wipeView ? { messages: [] } : {}),
       sending: false,
       streamingInBackground: false,
       streamingSessionIdState: null,

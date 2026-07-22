@@ -8,9 +8,28 @@ use db::Database;
 use services::exchange_rate_service::ExchangeRateCache;
 use services::quote_service::QuoteCache;
 use tauri::{Emitter, Manager};
+use tracing::warn;
+
+/// Initialize the global tracing subscriber.
+///
+/// Default level: `info` for this crate, `warn` for everything else. Override
+/// with the `RUST_LOG` env var (e.g. `RUST_LOG=debug` or
+/// `RUST_LOG=stock_portfolio_manager_lib=trace,reqwest=warn`). Safe to call
+/// more than once — later calls are no-ops once a subscriber is installed.
+fn init_tracing() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        tracing_subscriber::EnvFilter::new("info,reqwest=warn,rusqlite=warn,hyper=warn")
+    });
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .try_init();
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_tracing();
+    tracing::info!("starting stock-portfolio-manager");
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -43,7 +62,7 @@ pub fn run() {
                         cache.set_batch(&quotes);
                     }
                     Ok(_) => {}
-                    Err(e) => eprintln!("Failed to load cached quotes from DB: {}", e),
+                    Err(e) => warn!("Failed to load cached quotes from DB: {}", e),
                 }
             }
 
@@ -57,7 +76,7 @@ pub fn run() {
                         rate_cache.set(rates);
                     }
                     Ok(None) => {}
-                    Err(e) => eprintln!("Failed to load cached exchange rates from DB: {}", e),
+                    Err(e) => warn!("Failed to load cached exchange rates from DB: {}", e),
                 }
             }
 
@@ -76,7 +95,7 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 if let Err(e) = crate::services::skill_service::export_builtin_skills(&handle) {
-                    eprintln!("Failed to export built-in skills: {}", e);
+                    warn!("Failed to export built-in skills: {}", e);
                 }
             }
 
@@ -95,7 +114,7 @@ pub fn run() {
                     let conn = match db.conn.lock() {
                         Ok(c) => c,
                         Err(e) => {
-                            eprintln!("Background refresh: failed to acquire DB lock: {}", e);
+                            warn!("Background refresh: failed to acquire DB lock: {}", e);
                             return;
                         }
                     };
@@ -103,7 +122,7 @@ pub fn run() {
                         match conn.prepare("SELECT DISTINCT symbol, market FROM holdings") {
                             Ok(s) => s,
                             Err(e) => {
-                                eprintln!("Background refresh: failed to prepare query: {}", e);
+                                warn!("Background refresh: failed to prepare query: {}", e);
                                 return;
                             }
                         };
@@ -112,7 +131,7 @@ pub fn run() {
                     }) {
                         Ok(r) => r,
                         Err(e) => {
-                            eprintln!("Background refresh: failed to query holdings: {}", e);
+                            warn!("Background refresh: failed to query holdings: {}", e);
                             return;
                         }
                     };
@@ -158,7 +177,7 @@ pub fn run() {
                         // Notify the frontend so it can re-render with fresh prices.
                         let _ = handle.emit("quotes-refreshed", ());
                     }
-                    Err(e) => eprintln!("Background quote refresh failed: {}", e),
+                    Err(e) => warn!("Background quote refresh failed: {}", e),
                 }
             });
 

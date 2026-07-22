@@ -6,15 +6,18 @@ pub fn get_ai_config(db: &Database) -> Result<AiConfig, String> {
     let conn = db.conn.lock().unwrap();
 
     let result = conn.query_row(
-        "SELECT provider, api_key, model, base_url, system_prompt FROM ai_config WHERE id = 1",
+        "SELECT provider, api_key, model, base_url, system_prompt,
+                COALESCE(tools_enabled, 1) FROM ai_config WHERE id = 1",
         [],
         |row| {
+            let tools_enabled: bool = row.get(5)?;
             Ok(AiConfig {
                 provider: row.get(0)?,
                 api_key: row.get(1)?,
                 model: row.get(2)?,
                 base_url: row.get(3)?,
                 system_prompt: row.get(4)?,
+                tools_enabled,
             })
         },
     );
@@ -30,14 +33,15 @@ pub fn update_ai_config(db: &Database, config: &AiConfig) -> Result<bool, String
     let now = Utc::now().to_rfc3339();
 
     conn.execute(
-        "INSERT INTO ai_config (id, provider, api_key, model, base_url, system_prompt, updated_at)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO ai_config (id, provider, api_key, model, base_url, system_prompt, tools_enabled, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(id) DO UPDATE SET
            provider = excluded.provider,
            api_key = excluded.api_key,
            model = excluded.model,
            base_url = excluded.base_url,
            system_prompt = excluded.system_prompt,
+           tools_enabled = excluded.tools_enabled,
            updated_at = excluded.updated_at",
         rusqlite::params![
             config.provider,
@@ -45,6 +49,7 @@ pub fn update_ai_config(db: &Database, config: &AiConfig) -> Result<bool, String
             config.model,
             config.base_url,
             config.system_prompt,
+            config.tools_enabled,
             now
         ],
     )

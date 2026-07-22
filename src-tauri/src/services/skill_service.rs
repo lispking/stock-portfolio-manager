@@ -16,6 +16,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
+use tracing::warn;
 
 /// Embedded built-in skills. Each entry is `(file_stem, raw_markdown)`.
 ///
@@ -139,7 +140,7 @@ pub fn list_skills(app: &AppHandle) -> Result<Vec<Skill>, String> {
                 }
                 Err(e) => {
                     // One bad file shouldn't break listing the rest.
-                    eprintln!("[skills] failed to parse {}: {e}", path.display());
+                    warn!(target: "skills", "failed to parse {}: {e}", path.display());
                 }
             }
         }

@@ -6,6 +6,7 @@ use crate::services::quote_service::{
     fetch_quotes_batch_cached_with_providers, fetch_stock_history, QuoteCache,
 };
 use chrono::{Datelike, NaiveDate, Timelike};
+use tracing::warn;
 
 /// Number of calendar days to look back before the first missing date when
 /// fetching historical prices.  This ensures that stocks suspended (停牌)
@@ -552,10 +553,7 @@ pub async fn backfill_snapshots(
                 history_map.insert(symbol.clone(), date_price_map);
             }
             Err(e) => {
-                eprintln!(
-                    "Warning: failed to fetch history for {} ({}): {}",
-                    symbol, market, e
-                );
+                warn!("failed to fetch history for {} ({}): {}", symbol, market, e);
             }
         }
     }
@@ -660,8 +658,8 @@ pub async fn backfill_snapshots(
                         .and_then(|sorted| forward_fill_price(date_map, sorted, date))
                 })
                 .unwrap_or_else(|| {
-                    eprintln!(
-                        "Warning: no historical price for {} ({}) on {}",
+                    warn!(
+                        "no historical price for {} ({}) on {}",
                         symbol, market, date_str
                     );
                     0.0

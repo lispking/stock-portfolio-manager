@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tracing::{info, warn};
 
 /// Cash symbol prefix used to represent cash holdings.
 /// Cash symbols follow the pattern `$CASH-{CURRENCY}`, e.g. `$CASH-USD`, `$CASH-CNY`, `$CASH-HKD`.
@@ -678,6 +679,49 @@ async fn fetch_eastmoney_hk_quote(symbol: &str) -> Result<StockQuote, String> {
     parse_eastmoney_quote(symbol, "HK", resp)
 }
 
+/// Fetch a **market index** quote from East Money by its raw secid.
+///
+/// Indices use secid prefixes that the stock mappers above don't produce:
+/// - CN A-share indices reuse the Shanghai prefix `1.` (e.g. `1.000001` SSE,
+///   `1.000300` CSI 300).
+/// - US/HK/global indices use the `100.` namespace (e.g. `100.SPX` S&P 500,
+///   `100.NDX` NASDAQ, `100.DJIA` Dow Jones, `100.HSI` Hang Seng).
+///
+/// This is the fallback path for `market_overview_service` when Yahoo Finance
+/// returns 403 for index symbols. EastMoney needs no auth, so it's reliable
+/// even without a configured cookie.
+pub async fn fetch_index_quote_eastmoney(
+    secid: &str,
+    display_symbol: &str,
+    market: &str,
+) -> Result<StockQuote, String> {
+    let url = format!(
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f58,f60,f169,f170&secid={}",
+        secid
+    );
+    let response = send_eastmoney_request(&url, display_symbol).await?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "East Money index API error for {} (secid {}): HTTP {}",
+            display_symbol,
+            secid,
+            response.status()
+        ));
+    }
+    let body = response.text().await.map_err(|e| {
+        format!(
+            "Failed to read East Money index response for {}: {}",
+            display_symbol, e
+        )
+    })?;
+    let resp = parse_eastmoney_body(&body, display_symbol)?;
+    let mut quote = parse_eastmoney_quote(display_symbol, market, resp)?;
+    // Override the symbol with the canonical display symbol so the quote
+    // round-trips cleanly through the cache (keyed by display symbol).
+    quote.symbol = display_symbol.to_string();
+    Ok(quote)
+}
+
 /// Convert a symbol like "sh600519" or "sz000858" to the East Money secid
 /// format: "1.600519" (Shanghai) or "0.000858" (Shenzhen).
 fn to_eastmoney_secid(symbol: &str) -> Result<String, String> {
@@ -1345,7 +1389,7 @@ pub async fn fetch_quotes_batch_with_providers(
         };
         if xueqiu_failed && uses_xueqiu {
             // Skip: Xueqiu is already known to be unreachable for this batch.
-            eprintln!(
+            info!(
                 "Skipping {} ({}) – Xueqiu already failed for this batch",
                 symbol, market
             );
@@ -1360,10 +1404,7 @@ pub async fn fetch_quotes_batch_with_providers(
         match result {
             Ok(quote) => quotes.push(quote),
             Err(e) => {
-                eprintln!(
-                    "Warning: failed to fetch quote for {} ({}): {}",
-                    symbol, market, e
-                );
+                warn!("failed to fetch quote for {} ({}): {}", symbol, market, e);
                 let is_cookie_err = is_xueqiu_cookie_expired_error(&e);
                 let is_api_err = is_xueqiu_request_error(&e);
                 if is_cookie_err {
@@ -1714,7 +1755,7 @@ pub async fn fetch_stock_history_xueqiu(
             .map(|row| format!("{:?}", row))
             .collect::<Vec<_>>()
             .join(", ");
-        eprintln!(
+        warn!(
             "fetch_stock_history_xueqiu: {} items received for {} but none matched date range {}/{}. First items: [{}]",
             items.len(), symbol, start_date, end_date, preview
         );
@@ -1740,21 +1781,21 @@ pub async fn fetch_stock_history(
         "xueqiu" => match fetch_stock_history_xueqiu(symbol, market, start_date, end_date).await {
             Ok(prices) if !prices.is_empty() => Ok(prices),
             Ok(_empty) => {
-                eprintln!(
+                info!(
                         "fetch_stock_history: Xueqiu returned empty history for {} ({}), falling back to eastmoney",
                         symbol, market
                     );
                 match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
                     Ok(prices) if !prices.is_empty() => Ok(prices),
                     Ok(_empty) => {
-                        eprintln!(
+                        warn!(
                                 "fetch_stock_history: EastMoney also returned empty history for {} ({}), falling back to yahoo",
                                 symbol, market
                             );
                         fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
                     }
                     Err(e) => {
-                        eprintln!(
+                        warn!(
                                 "fetch_stock_history: EastMoney fallback also failed for {} ({}): {}, falling back to yahoo",
                                 symbol, market, e
                             );
@@ -1763,21 +1804,21 @@ pub async fn fetch_stock_history(
                 }
             }
             Err(e) => {
-                eprintln!(
+                warn!(
                         "fetch_stock_history: Xueqiu history failed for {} ({}): {}, falling back to eastmoney",
                         symbol, market, e
                     );
                 match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
                     Ok(prices) if !prices.is_empty() => Ok(prices),
                     Ok(_empty) => {
-                        eprintln!(
+                        warn!(
                                 "fetch_stock_history: EastMoney also returned empty history for {} ({}), falling back to yahoo",
                                 symbol, market
                             );
                         fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
                     }
                     Err(e2) => {
-                        eprintln!(
+                        warn!(
                                 "fetch_stock_history: EastMoney fallback also failed for {} ({}): {}, falling back to yahoo",
                                 symbol, market, e2
                             );
@@ -1790,14 +1831,14 @@ pub async fn fetch_stock_history(
             match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
                 Ok(prices) if !prices.is_empty() => Ok(prices),
                 Ok(_empty) => {
-                    eprintln!(
+                    warn!(
                         "fetch_stock_history: EastMoney returned empty history for {} ({}), falling back to yahoo",
                         symbol, market
                     );
                     fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
                 }
                 Err(e) => {
-                    eprintln!(
+                    warn!(
                         "fetch_stock_history: EastMoney history failed for {} ({}): {}, falling back to yahoo",
                         symbol, market, e
                     );
@@ -2495,13 +2536,13 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.symbol, "sh600519");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ CN quote (East Money): {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ CN quote failed (network issue in CI): {}", e);
+                warn!("⚠️ CN quote failed (network issue in CI): {}", e);
             }
         }
     }
@@ -2513,13 +2554,13 @@ mod tests {
         match &result {
             Ok(quote) => {
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ US quote (Yahoo): {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ US quote failed (network issue in CI): {}", e);
+                warn!("⚠️ US quote failed (network issue in CI): {}", e);
             }
         }
     }
@@ -2534,13 +2575,13 @@ mod tests {
                 assert_eq!(quote.symbol, "sh600519");
                 assert_eq!(quote.market, "CN");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ East Money quote: {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ East Money quote failed (network issue in CI): {}", e);
+                warn!("⚠️ East Money quote failed (network issue in CI): {}", e);
             }
         }
     }
@@ -2553,13 +2594,13 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "US");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ US quote (East Money): {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ US East Money quote failed (network issue in CI): {}", e);
+                warn!("⚠️ US East Money quote failed (network issue in CI): {}", e);
             }
         }
     }
@@ -2572,13 +2613,13 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "HK");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ HK quote (East Money): {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ HK East Money quote failed (network issue in CI): {}", e);
+                warn!("⚠️ HK East Money quote failed (network issue in CI): {}", e);
             }
         }
     }
@@ -3032,13 +3073,13 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.symbol, "sh600519");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ CN quote (Xueqiu): {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ CN Xueqiu quote failed (network issue in CI): {}", e);
+                warn!("⚠️ CN Xueqiu quote failed (network issue in CI): {}", e);
             }
         }
     }
@@ -3051,13 +3092,13 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "US");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ US quote (Xueqiu): {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ US Xueqiu quote failed (network issue in CI): {}", e);
+                warn!("⚠️ US Xueqiu quote failed (network issue in CI): {}", e);
             }
         }
     }
@@ -3070,13 +3111,13 @@ mod tests {
             Ok(quote) => {
                 assert_eq!(quote.market, "HK");
                 assert!(quote.current_price > 0.0, "Price should be positive");
-                println!(
+                info!(
                     "✅ HK quote (Xueqiu): {} = {}",
                     quote.name, quote.current_price
                 );
             }
             Err(e) => {
-                println!("⚠️ HK Xueqiu quote failed (network issue in CI): {}", e);
+                warn!("⚠️ HK Xueqiu quote failed (network issue in CI): {}", e);
             }
         }
     }

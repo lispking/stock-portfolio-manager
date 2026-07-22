@@ -628,6 +628,7 @@ export interface AiConfig {
   model: string;
   base_url: string | null;
   system_prompt: string;
+  tools_enabled: boolean;
 }
 
 export type AiProvider =
@@ -686,6 +687,13 @@ export interface ChatMessageWithMeta {
    * backend is streaming into; used to render a "⚡ 已用技能" badge.
    */
   activatedSkills?: string[];
+  /**
+   * Names of the data tools the backend executed for this turn (e.g.
+   * `get_market_overview`, `get_stock_quote`). Populated from the
+   * `ai-chat-tool` event and accumulated across rounds. Used to render a
+   * "🔍 已查询" badge so the user can see the assistant fetched real data.
+   */
+  usedTools?: string[];
   /**
    * Skill IDs the user *explicitly* staged for this turn (via `/`, `@`, or a
    * quick chip). Captured onto the assistant placeholder at send time so a

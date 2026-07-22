@@ -6,6 +6,7 @@ use crate::services::exchange_rate_service::ExchangeRateCache;
 use crate::services::quote_service::{self, QuoteCache};
 use chrono::Utc;
 use tauri::State;
+use tracing::warn;
 
 /// The same four system categories seeded by `db::run_migrations`.
 /// Re-seeded here because migrations only run on startup; after wiping the
@@ -165,7 +166,7 @@ pub fn factory_reset(
     // Restore AI skills to the factory set. Best-effort: a failure here
     // shouldn't undo the otherwise-successful wipe.
     if let Err(e) = crate::services::skill_service::reset_all_skills(&app) {
-        eprintln!("factory_reset: failed to reset skills: {}", e);
+        warn!("factory_reset: failed to reset skills: {}", e);
     }
 
     Ok(())

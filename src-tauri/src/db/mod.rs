@@ -340,6 +340,11 @@ impl Database {
         ",
         )?;
 
+        // Migration: add tools_enabled column if missing.
+        let _ = conn.execute_batch(
+            "ALTER TABLE ai_config ADD COLUMN tools_enabled INTEGER NOT NULL DEFAULT 1;",
+        );
+
         // AI chat sessions & messages. Messages cascade-delete with their
         // session via the foreign key (FK enforcement is enabled at the top
         // of this function). Sessions are user-created named conversations;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Input, Popconfirm, Popover, Space, Switch, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Input, Popconfirm, Popover, Select, Space, Switch, Tag, Tooltip, Typography, message } from "antd";
 import {
   RobotOutlined,
   SendOutlined,
@@ -18,6 +18,8 @@ import {
   MenuUnfoldOutlined,
   RedoOutlined,
   LoadingOutlined,
+  DatabaseOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -26,18 +28,91 @@ import { useChatStore, selectSessionTotalTokens } from "../../stores/chatStore";
 import { useChatSessionStore } from "../../stores/chatSessionStore";
 import { useAiStore } from "../../stores/aiStore";
 import { useSkillStore } from "../../stores/skillStore";
-import type { ChatMessageWithMeta, ChatSession, ChatUsage, Skill } from "../../types";
+import type { AiModelInfo, ChatMessageWithMeta, ChatSession, ChatUsage, Skill } from "../../types";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-// Suggested starter prompts shown beneath the composer in the empty state.
-const SUGGESTIONS = [
+// A large pool of starter prompts shown (6 at a time, randomly) beneath the
+// composer in the empty state. Each prompt maps roughly to a tool/category so
+// the suggestions showcase the assistant's range. `pickRandom` selects 6 per
+// render and the "换一批" button reshuffles.
+const SUGGESTION_POOL: string[] = [
+  // 行情 / 大盘
+  "今天大盘怎么样？主要指数和我的持仓表现如何？",
+  "AAPL 现在多少钱？近期走势如何？",
+  "帮我查一下腾讯（0700.HK）的实时行情",
+  "茅台现在什么价位？最近一个月涨跌多少？",
+  // 组合总览
+  "我现在的总资产是多少？按市场怎么分布？",
   "分析一下我当前持仓的集中度和风险",
+  "我的持仓里哪些占比过高？需要警惕吗？",
+  "各账户、各类别的资产分布合理吗？",
+  // 绩效 / 收益
   "近一年绩效表现如何？哪些标的贡献最大？",
+  "我的收益主要来自哪些股票和市场？",
+  "按月看，哪几个月赚了、哪几个月亏了？",
+  "最大回撤是多少？发生在什么时候？多久恢复的？",
+  "我的夏普比率和波动率说明什么？风险调整后收益好吗？",
+  "持仓里哪只股票表现最好？哪只最差？",
+  // 交易 / 分红
   "基于近期交易，评估我的操作决策质量",
+  "最近一个月我做了哪些买卖？时机好不好？",
+  "我收了多少分红？哪些标的贡献的分红最多？",
+  // 期权 / 提醒
+  "我还有哪些期权没到期？什么时候到期？",
+  "我设的价格提醒触发了吗？",
+  // 建议
   "给出个性化的投资建议和改进方向",
+  "基于当前持仓，我应该如何优化配置？",
 ];
+
+/// Pick `n` distinct random items from `pool`, seeded by `seed` so the caller
+/// can reshuffle by bumping the seed. Deterministic for a given (pool, seed)
+/// so React's render stays stable between re-renders unless the seed changes.
+function pickRandom<T>(pool: readonly T[], n: number, seed: number): T[] {
+  if (pool.length <= n) return [...pool];
+  // Simple seeded PRNG (mulberry32) — we don't need crypto-grade randomness,
+  // just a stable, reshufflable subset. The seed makes this pure w.r.t. props.
+  let s = seed >>> 0;
+  const rand = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const indices = pool.map((_, i) => i);
+  // Fisher-Yates partial shuffle: move n random picks to the front.
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(rand() * (indices.length - i));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  return indices.slice(0, n).map((i) => pool[i]);
+}
+
+// Friendly Chinese labels for the tool names the backend reports via the
+// `ai-chat-tool` event. Raw names like `get_market_overview` would look out
+// of place in a badge, so we map them to what the user actually asked for.
+const TOOL_LABELS: Record<string, string> = {
+  get_market_overview: "大盘总览",
+  get_stock_quote: "实时行情",
+  get_price_history: "价格历史",
+  search_stock: "代码查询",
+  get_portfolio_overview: "组合总览",
+  get_holdings_detail: "持仓明细",
+  get_dashboard_summary: "资产总览",
+  get_transactions: "交易记录",
+  get_performance_metrics: "绩效指标",
+  get_return_attribution: "收益归因",
+  get_monthly_returns: "月度收益",
+  get_drawdown_analysis: "回撤分析",
+  get_risk_metrics: "风险指标",
+  get_holding_ranking: "持仓排名",
+  get_dividend_income: "分红收入",
+  check_price_alerts: "价格提醒",
+  get_option_positions: "期权持仓",
+};
 
 export default function AiAssistantPage() {
   const navigate = useNavigate();
@@ -396,6 +471,84 @@ function SessionItem({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Model switcher (compact dropdown in the chat header)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Compact model selector that lets the user switch the active model without
+/// leaving the chat page. Fetches the provider's model list on mount and on
+/// provider change; falls back to the current model id when the list is empty
+/// or the fetch fails (no key, offline, provider unsupported).
+///
+/// The backend's `update_ai_config` is a full-replace, so we spread the
+/// existing config and only override `model` — preserving provider/key/base_url.
+function ModelSwitcher() {
+  const { config, fetchModels, updateConfig } = useAiStore();
+  const [models, setModels] = useState<AiModelInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch the model list whenever the provider / key / base_url changes.
+  // Best-effort: a failure (no key, offline) just leaves the list empty and
+  // the Select renders the current model as a free-text option.
+  useEffect(() => {
+    if (!config) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchModels({
+      provider: config.provider,
+      api_key: config.api_key,
+      base_url: config.base_url ?? undefined,
+    })
+      .then((list) => {
+        if (!cancelled) setModels(list);
+      })
+      .catch(() => {
+        // Silent: the switcher still works with just the current model.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config?.provider, config?.api_key, config?.base_url]);
+
+  // Build options from the fetched list. Always include the current model so
+  // the Select shows a valid value even when the list hasn't loaded yet or the
+  // current model isn't in the provider's catalog.
+  const options = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of models) {
+      map.set(m.id, m.name ? `${m.name}（${m.id}）` : m.id);
+    }
+    if (config?.model && !map.has(config.model)) {
+      map.set(config.model, config.model);
+    }
+    return Array.from(map, ([value, label]) => ({ value, label }));
+  }, [models, config?.model]);
+
+  const handleChange = async (id: string) => {
+    if (!config) return;
+    await updateConfig({ ...config, model: id });
+    message.success(`已切换到 ${id}`);
+  };
+
+  return (
+    <Select
+      size="small"
+      showSearch
+      style={{ minWidth: 160, maxWidth: 240 }}
+      value={config?.model}
+      options={options}
+      loading={loading}
+      onChange={handleChange}
+      notFoundContent={loading ? "加载中..." : "暂无模型列表"}
+      placeholder="选择模型"
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Chat panel (right side)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -450,6 +603,13 @@ function ChatPanel({
   const setCurrentSession = useChatSessionStore((s) => s.setCurrentSession);
 
   const [input, setInput] = useState("");
+  // Seed for the random suggestion picker. Bumping it reshuffles which 6 of
+  // SUGGESTION_POOL are shown in the empty state ("换一批" button).
+  const [suggestionSeed, setSuggestionSeed] = useState(0);
+  const suggestions = useMemo(
+    () => pickRandom(SUGGESTION_POOL, 6, suggestionSeed),
+    [suggestionSeed],
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const loadedSessionRef = useRef<string | null>(null);
   // Set BEFORE calling ensureSession() when sending from the welcome screen.
@@ -868,8 +1028,22 @@ function ChatPanel({
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
-              {SUGGESTIONS.map((s) => (
+            <div className="flex items-center justify-between mt-4">
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                试试问我：
+              </Text>
+              <Button
+                type="text"
+                size="small"
+                icon={<SyncOutlined />}
+                onClick={() => setSuggestionSeed((s) => s + 1)}
+                style={{ color: "#7c3aed", fontSize: 12, padding: "0 4px" }}
+              >
+                换一批
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+              {suggestions.map((s) => (
                 <Button
                   key={s}
                   disabled={!!notConfigured}
@@ -999,7 +1173,7 @@ function Composer({
   // padding (`bottom: 7`), and bump the small-size min height so there is
   // always room for the 34px button plus breathing space.
   return (
-    <div className="relative">
+    <div>
       {/* Staged-skill chips above the textarea so the user can see — and
           remove — the explicit selection that will apply to the next send. */}
       {stagedSkills.length > 0 && (
@@ -1021,6 +1195,10 @@ function Composer({
           ))}
         </div>
       )}
+      <div
+        className="rounded-lg border bg-white"
+        style={{ borderColor: "#d9d9d9" }}
+      >
       <Popover
         open={slashOpen}
         placement="topLeft"
@@ -1092,37 +1270,42 @@ function Composer({
           }
           autoSize={{ minRows, maxRows: 8 }}
           disabled={notConfigured}
+          // Borderless: the outer wrapper provides the border so the bottom
+          // toolbar (model switcher + send button) sits flush inside it.
+          variant="borderless"
           style={{
-            paddingRight: 56,
-            paddingTop: 12,
-            paddingBottom: 12,
+            padding: "12px 14px 8px",
             minHeight: size === "large" ? 72 : 60,
             ...(size === "large" ? { fontSize: 15 } : {}),
           }}
         />
       </Popover>
-      <button
-        type="button"
-        onClick={sending ? stopGeneration : handleSend}
-        disabled={!sending && !canSend}
-        aria-label={sending ? "停止生成" : "发送"}
-        className="absolute flex items-center justify-center text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-        style={{
-          right: 9,
-          bottom: 9,
-          width: 34,
-          height: 34,
-          borderRadius: 9999,
-          border: "none",
-          cursor: "pointer",
-          background: sending
-            ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-            : "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-        }}
-      >
-        {sending ? <StopOutlined style={{ fontSize: 16 }} /> : <SendOutlined style={{ fontSize: 16 }} />}
-      </button>
+      {/* Bottom toolbar inside the input box: model switcher on the left,
+          send/stop button on the right — like the reference screenshot. */}
+      <div className="flex items-center justify-between px-2 pb-2 pt-1">
+        <ModelSwitcher />
+        <button
+          type="button"
+          onClick={sending ? stopGeneration : handleSend}
+          disabled={!sending && !canSend}
+          aria-label={sending ? "停止生成" : "发送"}
+          className="flex items-center justify-center text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 9999,
+            border: "none",
+            cursor: "pointer",
+            background: sending
+              ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
+              : "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+          }}
+        >
+          {sending ? <StopOutlined style={{ fontSize: 16 }} /> : <SendOutlined style={{ fontSize: 16 }} />}
+        </button>
+      </div>
+      </div>
     </div>
   );
 }
@@ -1251,6 +1434,20 @@ function MessageRow({
                 style={{ marginInlineEnd: 0, fontSize: 12 }}
               >
                 已用技能：{name}
+              </Tag>
+            ))}
+          </div>
+        )}
+        {message.usedTools && message.usedTools.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {message.usedTools.map((name) => (
+              <Tag
+                key={name}
+                icon={<DatabaseOutlined />}
+                color="blue"
+                style={{ marginInlineEnd: 0, fontSize: 12 }}
+              >
+                已查询：{TOOL_LABELS[name] ?? name}
               </Tag>
             ))}
           </div>
