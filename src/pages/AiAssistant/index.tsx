@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Input, Popconfirm, Popover, Select, Space, Switch, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Input, Popconfirm, Popover, Select, Space, Switch, Tag, Tooltip, Typography, message, message as antdMessage } from "antd";
 import {
   RobotOutlined,
   SendOutlined,
@@ -20,14 +20,16 @@ import {
   LoadingOutlined,
   DatabaseOutlined,
   SyncOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { useChatStore, selectSessionTotalTokens } from "../../stores/chatStore";
 import { useChatSessionStore } from "../../stores/chatSessionStore";
 import { useAiStore } from "../../stores/aiStore";
 import { useSkillStore } from "../../stores/skillStore";
+import { ReasoningBlock } from "../../components/ai/ReasoningBlock";
+import { ToolCallList } from "../../components/ai/ToolCallCard";
+import { MarkdownRenderer } from "../../components/ai/MarkdownRenderer";
 import type { AiModelInfo, ChatMessageWithMeta, ChatSession, ChatUsage, Skill } from "../../types";
 
 const { Title, Text } = Typography;
@@ -571,6 +573,7 @@ function ChatPanel({
     sendMessage,
     editAndResend,
     retryLastTurn,
+    regenerateMessage,
     dismissError,
     stopGeneration,
     clearMessages,
@@ -928,6 +931,14 @@ function ChatPanel({
                       : undefined
                   }
                   onDismiss={m.error ? () => dismissError(m.id) : undefined}
+                  // Regenerate is available on any completed (non-error)
+                  // assistant answer that isn't the in-flight streaming row.
+                  // Disabled entirely while a stream is running.
+                  onRegenerate={
+                    sessionId && !m.error && !sending
+                      ? () => void regenerateMessage(m.id, sessionId)
+                      : undefined
+                  }
                 />
               ))}
               <div ref={messagesEndRef} />
@@ -1317,6 +1328,7 @@ function MessageRow({
   onEdit,
   onRetry,
   onDismiss,
+  onRegenerate,
 }: {
   message: ChatMessageWithMeta;
   streaming: boolean;
@@ -1326,11 +1338,25 @@ function MessageRow({
   onRetry?: () => void;
   /** Remove this failed assistant row from the list. */
   onDismiss?: () => void;
+  /** Regenerate this completed assistant turn with a fresh completion. */
+  onRegenerate?: () => void;
 }) {
   const isUser = message.role === "user";
   const timeLabel = formatTime(message.createdAt);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      antdMessage.success("已复制");
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      antdMessage.error("复制失败");
+    }
+  };
 
   const avatar = (
     <div
@@ -1421,7 +1447,7 @@ function MessageRow({
   }
 
   return (
-    <div className="flex gap-3">
+    <div className="group flex gap-3">
       {avatar}
       <div className="flex-1 min-w-0 pt-0.5">
         {message.activatedSkills && message.activatedSkills.length > 0 && (
@@ -1438,19 +1464,37 @@ function MessageRow({
             ))}
           </div>
         )}
-        {message.usedTools && message.usedTools.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1.5">
-            {message.usedTools.map((name) => (
-              <Tag
-                key={name}
-                icon={<DatabaseOutlined />}
-                color="blue"
-                style={{ marginInlineEnd: 0, fontSize: 12 }}
-              >
-                已查询：{TOOL_LABELS[name] ?? name}
-              </Tag>
-            ))}
-          </div>
+        {/*
+          Chain-of-thought (reasoning_content) from thinking models. Rendered
+          above the tool calls so the flow reads: think → query → answer.
+          In-memory only; collapsed after streaming finishes.
+        */}
+        {message.reasoning && message.reasoning.trim().length > 0 && (
+          <ReasoningBlock reasoning={message.reasoning} streaming={streaming} />
+        )}
+        {/*
+          Tool calls. Prefer the rich per-call cards (status, args, result)
+          when present; fall back to the legacy name-only badges for messages
+          loaded from older persisted sessions that only carry `usedTools`.
+        */}
+        {message.toolCalls && message.toolCalls.length > 0 ? (
+          <ToolCallList tools={message.toolCalls} />
+        ) : (
+          message.usedTools &&
+          message.usedTools.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {message.usedTools.map((name) => (
+                <Tag
+                  key={name}
+                  icon={<DatabaseOutlined />}
+                  color="blue"
+                  style={{ marginInlineEnd: 0, fontSize: 12 }}
+                >
+                  已查询：{TOOL_LABELS[name] ?? name}
+                </Tag>
+              ))}
+            </div>
+          )
         )}
         {message.error ? (
           <ErrorCard
@@ -1461,28 +1505,61 @@ function MessageRow({
           />
         ) : message.content ? (
           <div className="ai-chat-md">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {message.content}
-            </ReactMarkdown>
+            <MarkdownRenderer content={message.content} />
             {streaming && (
               <span className="inline-block w-2 h-4 ml-0.5 bg-purple-500 animate-pulse align-middle" />
             )}
           </div>
         ) : (
           <Text type="secondary" className="ai-chat-md">
-            {streaming ? "思考中…" : ""}
+            {streaming ? statusPlaceholder(message) : ""}
           </Text>
         )}
         {!streaming && !message.error && (
-          <MessageMeta
-            time={timeLabel}
-            usage={message.usage}
-            stopped={message.stopped}
-          />
+          <div className="flex items-center gap-1 mt-1 h-5">
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Tooltip title="复制">
+                <Button
+                  type="text"
+                  size="small"
+                  className="text-gray-400 hover:text-blue-500"
+                  style={{ fontSize: 12, padding: "0 4px" }}
+                  icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+                  onClick={handleCopy}
+                />
+              </Tooltip>
+              {onRegenerate && (
+                <Tooltip title="重新生成">
+                  <Button
+                    type="text"
+                    size="small"
+                    className="text-gray-400 hover:text-blue-500"
+                    style={{ fontSize: 12, padding: "0 4px" }}
+                    icon={<RedoOutlined />}
+                    onClick={onRegenerate}
+                  />
+                </Tooltip>
+              )}
+            </div>
+            <MessageMeta time={timeLabel} usage={message.usage} stopped={message.stopped} />
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+/**
+ * Choose the empty-state placeholder text while streaming based on what the
+ * model is currently doing, so the user has a clearer signal than a generic
+ * "思考中…". Priority: actively running tools → reasoning in progress →
+ * waiting for the first token.
+ */
+function statusPlaceholder(message: ChatMessageWithMeta): string {
+  const toolsRunning = message.toolCalls?.some((t) => t.status === "running");
+  if (toolsRunning) return "正在查询数据…";
+  if (message.reasoning && message.reasoning.length > 0) return "正在思考…";
+  return "思考中…";
 }
 
 /**

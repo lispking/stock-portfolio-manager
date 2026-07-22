@@ -681,6 +681,12 @@ export interface ChatMessageWithMeta {
   stopped?: boolean;
   error?: string;
   /**
+   * Chain-of-thought text streamed from `reasoning_content` (DeepSeek-R1 /
+   * GLM-4.5+ thinking models). In-memory only — not persisted. Rendered as a
+   * collapsible "思考过程" block above the answer.
+   */
+  reasoning?: string;
+  /**
    * Names of the skills the backend activated for this turn (explicit via
    * `active_skills`, or auto-matched from triggers). Populated from the
    * `ai-chat-skill` event. Only set on the assistant placeholder that the
@@ -692,8 +698,17 @@ export interface ChatMessageWithMeta {
    * `get_market_overview`, `get_stock_quote`). Populated from the
    * `ai-chat-tool` event and accumulated across rounds. Used to render a
    * "🔍 已查询" badge so the user can see the assistant fetched real data.
+   * @deprecated Prefer `toolCalls` (richer, per-call detail). Kept for
+   * backward compat with older persisted sessions.
    */
   usedTools?: string[];
+  /**
+   * Detailed per-tool-call progress for this turn (Claude-style expandable
+   * cards). Populated from the `ai-chat-tool-call` event and upserted by id
+   * across rounds. In-memory only — not persisted. When present, the UI
+   * renders `ToolCallCard`s instead of the legacy `usedTools` name badges.
+   */
+  toolCalls?: ToolCallInfo[];
   /**
    * Skill IDs the user *explicitly* staged for this turn (via `/`, `@`, or a
    * quick chip). Captured onto the assistant placeholder at send time so a
@@ -701,6 +716,27 @@ export interface ChatMessageWithMeta {
    * of silently dropping it (see chatStore.retryLastTurn).
    */
   explicitSkillIds?: string[];
+}
+
+/**
+ * One tool invocation's lifecycle, mirrored from the backend `ToolCallEvent`.
+ * Used to render a Claude-style expandable tool card showing status, arguments,
+ * and results as the agentic loop runs.
+ */
+export interface ToolCallInfo {
+  /** Stable id (the model's `tool_call_id`). */
+  id: string;
+  /** Function name, e.g. `get_stock_quote`. */
+  name: string;
+  /** Raw JSON arguments string the model supplied (may be undefined/empty). */
+  arguments?: string;
+  status: "running" | "success" | "error";
+  /** Tool result JSON (success only; truncated for display). */
+  result?: string;
+  /** Error message (error only). */
+  error?: string;
+  /** Wall-clock execution time in milliseconds (success/error only). */
+  durationMs?: number;
 }
 
 /** A persisted AI chat session (one named conversation). */

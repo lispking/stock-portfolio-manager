@@ -483,6 +483,59 @@ struct AssembledToolCall {
     arguments: String,
 }
 
+/// Lifecycle event for a single tool invocation, sent to the frontend via the
+/// `ai-chat-tool-call` Tauri event so the UI can render a Claude-style
+/// expandable tool card with live status, arguments, and results.
+///
+/// Emitted twice per call: once with `Running` before `execute_tool` runs, and
+/// again with `Success` (carrying `result`) or `Error` (carrying `error`) plus
+/// `duration_ms` when it finishes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallEvent {
+    /// Stable id (the model's `tool_call_id`). The frontend upserts cards by it.
+    pub id: String,
+    /// Function name, e.g. `get_stock_quote`.
+    pub name: String,
+    /// Raw JSON arguments string the model supplied (best-effort; may be empty).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+    pub status: ToolCallStatus,
+    /// Tool result JSON (success only). Truncated to keep IPC payloads small.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    /// Error message (error only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Wall-clock execution time in milliseconds (success/error only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolCallStatus {
+    Running,
+    Success,
+    Error,
+}
+
+/// Cap on the size of a tool `result` payload we ship to the UI, to keep IPC
+/// payloads and React re-renders cheap. The model still receives the full
+/// result; this only trims what is shown in the expandable card.
+const TOOL_RESULT_DISPLAY_LIMIT: usize = 2000;
+
+/// Truncate a tool result string for display, appending an ellipsis marker if
+/// it was cut. Keeps complete JSON-ish content readable.
+fn truncate_for_display(s: &str) -> String {
+    if s.chars().count() <= TOOL_RESULT_DISPLAY_LIMIT {
+        s.to_string()
+    } else {
+        let cut: String = s.chars().take(TOOL_RESULT_DISPLAY_LIMIT).collect();
+        format!("{cut}\n…（结果已截断，完整数据已发送给模型）")
+    }
+}
+
 /// Merge streaming tool-call deltas (keyed by `index`) into a list of complete
 /// calls. Pure function so it can be unit-tested in isolation.
 ///
@@ -669,9 +722,15 @@ async fn stream_one_round(
                                     }
                                 }
                                 if let Some(rc) = choice.delta.reasoning_content {
-                                    had_reasoning = true;
-                                    reasoning_char_count += rc.chars().count();
-                                    reasoning_text.push_str(&rc);
+                                    if !rc.is_empty() {
+                                        had_reasoning = true;
+                                        reasoning_char_count += rc.chars().count();
+                                        reasoning_text.push_str(&rc);
+                                        // Stream the chain-of-thought to the frontend so the
+                                        // UI can render a collapsible "思考过程" block live,
+                                        // matching the Claude/ZCode reasoning experience.
+                                        let _ = app.emit("ai-chat-reasoning", rc);
+                                    }
                                 }
                                 if !choice.delta.tool_calls.is_empty() {
                                     pending_deltas.extend(choice.delta.tool_calls);
@@ -747,8 +806,14 @@ async fn stream_one_round(
 ///
 /// Events emitted:
 /// - `ai-chat-delta` (payload: `String`) — one token delta at a time
+/// - `ai-chat-reasoning` (payload: `String`) — one chain-of-thought token
+///   delta at a time (DeepSeek-R1 / GLM-4.5+ reasoning_content)
 /// - `ai-chat-skill` (payload: `Vec<String>`) — activated skill names (once)
 /// - `ai-chat-tool` (payload: `Vec<String>`) — tool names being run this round
+/// - `ai-chat-tool-call` (payload: `ToolCallEvent`) — per-tool progress:
+///   emitted with `status:"running"` before execution and again with
+///   `status:"success"`/`"error"` + result/duration after. Lets the UI render
+///   Claude-style expandable tool cards.
 /// - `ai-chat-usage` (payload: `ChatUsage`) — token accounting (final round)
 /// - `ai-chat-done` (payload: `()`) — successful completion
 /// - `ai-chat-error` (payload: `String`) — any failure (also returned as `Err`)
@@ -1072,18 +1137,83 @@ pub async fn chat_stream(
         // returned as error JSON in the tool result — the model sees them and
         // can decide how to handle (apologise, retry, etc.). We never abort
         // the turn because a tool failed.
+        //
+        // For each call we also emit a `ai-chat-tool-call` event before and
+        // after execution so the UI can render a Claude-style expandable tool
+        // card with live status, arguments, and results.
         for tc in &outcome.tool_calls {
+            // Tell the UI this tool is starting (so a spinner can show).
+            let args_for_ui = if tc.arguments.trim().is_empty() {
+                None
+            } else {
+                Some(tc.arguments.clone())
+            };
+            let _ = app.emit(
+                "ai-chat-tool-call",
+                ToolCallEvent {
+                    id: tc.id.clone(),
+                    name: tc.function_name.clone(),
+                    arguments: args_for_ui.clone(),
+                    status: ToolCallStatus::Running,
+                    result: None,
+                    error: None,
+                    duration_ms: None,
+                },
+            );
+
+            let started = std::time::Instant::now();
             let result = crate::services::ai_tools::execute_tool(
                 &tool_ctx,
                 &tc.function_name,
                 &tc.arguments,
             )
             .await;
+            let duration_ms = started.elapsed().as_millis() as u64;
+
             messages.push(json!({
                 "role": "tool",
                 "tool_call_id": tc.id,
                 "content": result.content,
             }));
+
+            // Report the outcome to the UI. The model always gets the full
+            // `content`; the event payload is truncated for display only.
+            if result.ok {
+                let _ = app.emit(
+                    "ai-chat-tool-call",
+                    ToolCallEvent {
+                        id: tc.id.clone(),
+                        name: tc.function_name.clone(),
+                        arguments: args_for_ui.clone(),
+                        status: ToolCallStatus::Success,
+                        result: Some(truncate_for_display(&result.content)),
+                        error: None,
+                        duration_ms: Some(duration_ms),
+                    },
+                );
+            } else {
+                // Surface a short, human-readable error to the card.
+                let err_msg = match serde_json::from_str::<serde_json::Value>(&result.content) {
+                    Ok(v) => v
+                        .get("error")
+                        .and_then(|e| e.as_str())
+                        .unwrap_or(&result.content)
+                        .to_string(),
+                    Err(_) => result.content.clone(),
+                };
+                let _ = app.emit(
+                    "ai-chat-tool-call",
+                    ToolCallEvent {
+                        id: tc.id.clone(),
+                        name: tc.function_name.clone(),
+                        arguments: args_for_ui.clone(),
+                        status: ToolCallStatus::Error,
+                        result: None,
+                        error: Some(truncate_for_display(&err_msg)),
+                        duration_ms: Some(duration_ms),
+                    },
+                );
+            }
         }
         // Loop continues → next round sends tool results back to the model.
     }

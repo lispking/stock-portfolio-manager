@@ -7,6 +7,7 @@ import type {
   ChatMessageRecord,
   ChatMessageWithMeta,
   ChatUsage,
+  ToolCallInfo,
 } from "../types";
 
 interface ChatState {
@@ -60,6 +61,15 @@ interface ChatState {
    * path as `sendMessage`.
    */
   retryLastTurn: (sessionId: string) => Promise<void>;
+  /**
+   * Regenerate a specific assistant turn: drop that assistant message and
+   * everything after it, then re-issue `chat_with_ai` using the user turn that
+   * preceded it. Unlike `retryLastTurn` (which only retries *failed* turns),
+   * this works on a completed assistant answer — the Claude/ZCode "regenerate"
+   * affordance. Re-applies any explicit skill selection captured on the
+   * original turn. No-op while another stream is running.
+   */
+  regenerateMessage: (messageId: string, sessionId: string) => Promise<void>;
   /**
    * Remove a failed assistant placeholder from the message list. Used by the
    * "忽略" button on an error card so the user can clean up the conversation
@@ -493,6 +503,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }).catch((e) => {
       console.error("[chatStore] failed to bind ai-chat-tool listener", e);
     });
+
+    // Stream the model's chain-of-thought (reasoning_content) so the UI can
+    // render a live, collapsible "思考过程" block. Behaves exactly like
+    // ai-chat-delta: append to the in-flight message (foreground or background).
+    listen<string>("ai-chat-reasoning", (event) => {
+      const token = event.payload;
+      if (!token || !streamingId) return;
+      applyStreamUpdate(set, (m) => ({
+        ...m,
+        reasoning: (m.reasoning ?? "") + token,
+      }));
+    }).catch((e) => {
+      console.error("[chatStore] failed to bind ai-chat-reasoning listener", e);
+    });
+
+    // Detailed per-tool-call lifecycle: the backend emits a ToolCallEvent with
+    // status "running" before execution and "success"/"error" + result/error
+    // + durationMs after. We upsert by id so a running card updates in place
+    // when its result arrives. Replaces the coarse name-only badge.
+    listen<ToolCallInfo>("ai-chat-tool-call", (event) => {
+      const tc = event.payload;
+      if (!tc || !tc.id || !streamingId) return;
+      applyStreamUpdate(set, (m) => {
+        const list = m.toolCalls ? [...m.toolCalls] : [];
+        const idx = list.findIndex((c) => c.id === tc.id);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...tc };
+        } else {
+          list.push(tc);
+        }
+        return { ...m, toolCalls: list };
+      });
+    }).catch((e) => {
+      console.error("[chatStore] failed to bind ai-chat-tool-call listener", e);
+    });
   },
 
   loadSessionMessages: async (sessionId) => {
@@ -753,6 +798,59 @@ export const useChatStore = create<ChatState>((set, get) => ({
           : m,
       ),
     }));
+
+    try {
+      await invoke("chat_with_ai", {
+        req: {
+          messages: history,
+          includeContext: get().contextEnabled,
+          activeSkills,
+        },
+      });
+    } catch (err) {
+      failStreamingMessage(set, String(err));
+    }
+  },
+
+  regenerateMessage: async (messageId, sessionId) => {
+    if (get().sending) return;
+    const messages = get().messages;
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    const target = messages[idx];
+    if (target.role !== "assistant") return;
+
+    // Keep everything before this assistant turn (the last element is the user
+    // turn that prompted it). Drop the target assistant message and anything
+    // after it so a fresh answer replaces the old one.
+    const truncated = messages.slice(0, idx);
+    const history = buildHistory(truncated);
+
+    // Re-apply the explicit skill selection captured on the original turn so
+    // regenerate preserves a `/`-picked skill. Fall back to auto-match otherwise.
+    const activeSkills = target.explicitSkillIds ?? [];
+
+    // New placeholder so React sees a distinct key (the old row is dropped).
+    const assistantMsg: ChatMessageWithMeta = {
+      id: newId(),
+      role: "assistant",
+      content: "",
+      createdAt: Date.now() + 1,
+      ...(activeSkills.length > 0 ? { explicitSkillIds: activeSkills } : {}),
+    };
+    streamingId = assistantMsg.id;
+    streamingSessionId = sessionId;
+
+    set({
+      messages: [...truncated, assistantMsg],
+      sending: true,
+      error: null,
+      streamingSessionIdState: sessionId,
+    });
+
+    // Persist the truncated history immediately so the dropped assistant turns
+    // are removed from storage even if this regeneration later fails.
+    void persistMessages(sessionId, truncated);
 
     try {
       await invoke("chat_with_ai", {
