@@ -765,6 +765,10 @@ export interface ChatMessageRecord {
   completion_tokens: number;
   total_tokens: number;
   cached_tokens: number;
+  /** Chain-of-thought text (reasoning_content), assistant turns only. */
+  reasoning?: string;
+  /** JSON string of `ToolCallInfo[]`, assistant turns only. */
+  tool_calls?: string;
   created_at: string;
 }
 

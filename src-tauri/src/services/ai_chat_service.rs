@@ -949,24 +949,66 @@ pub async fn chat_stream(
 
     let mut last_usage: Option<ChatUsage> = None;
 
-    for round in 0..crate::services::ai_tools::MAX_TOOL_ROUNDS {
-        let body = if cfg.tools_enabled {
+    // Build the request body. `with_tools` controls whether the `tools` /
+    // `tool_choice` fields are included. The first round always respects the
+    // user's config; a fallback round (after an empty reply from a model that
+    // likely doesn't support function calling) passes `with_tools=false`.
+    //
+    // When `with_tools=false` we ALSO strip the "# 你可用的工具" section from
+    // the base system prompt — otherwise the model is told it has tools but
+    // isn't given any, which is exactly the confusion that causes empty
+    // replies. The first system message is the base prompt (added before the
+    // skill block and context); we transform a copy, not the originals.
+    //
+    // This is a free function (not a closure) so it borrows `messages` only
+    // for the duration of the call — the loop can then mutate `messages`
+    // (e.g. append tool results) without a borrow conflict.
+    let build_body = |msgs: &Vec<serde_json::Value>, with_tools: bool| -> serde_json::Value {
+        if with_tools && cfg.tools_enabled {
             json!({
                 "model": cfg.model,
-                "messages": messages,
+                "messages": msgs,
                 "stream": true,
                 "tools": tools,
                 "tool_choice": "auto",
                 "stream_options": { "include_usage": true },
             })
         } else {
+            // Strip the tools section from the base system prompt so the model
+            // isn't told about tools it won't receive. Only the first system
+            // message (the base persona prompt) is transformed; skill/context
+            // messages pass through unchanged.
+            let messages_for_body: Vec<serde_json::Value> = msgs
+                .iter()
+                .enumerate()
+                .map(|(i, m)| {
+                    if i == 0 && m.get("role").and_then(|r| r.as_str()) == Some("system") {
+                        if let Some(content) = m.get("content").and_then(|c| c.as_str()) {
+                            let mut copy = m.clone();
+                            copy["content"] = json!(strip_tools_from_prompt(content));
+                            return copy;
+                        }
+                    }
+                    m.clone()
+                })
+                .collect();
             json!({
                 "model": cfg.model,
-                "messages": messages,
+                "messages": messages_for_body,
                 "stream": true,
                 "stream_options": { "include_usage": true },
             })
-        };
+        }
+    };
+
+    // Tracks whether we've already attempted the tools-stripped fallback this
+    // turn. We retry at most once: if the model still returns empty without
+    // tools, the issue is elsewhere (model choice, content filter) and a hard
+    // error with a clear diagnostic is more honest than silent looping.
+    let mut tried_without_tools = false;
+
+    for round in 0..crate::services::ai_tools::MAX_TOOL_ROUNDS {
+        let body = build_body(&messages, !tried_without_tools);
 
         // ── Stream with retry on truncation ────────────────────────────────
         // If the stream is truncated (no `[DONE]`, no clean EOF), we retry
@@ -1074,6 +1116,21 @@ pub async fn chat_stream(
                     let _ = app.emit("ai-chat-done", ());
                     return Ok(());
                 }
+                // Auto-fallback: the most common cause of an empty reply is the
+                // model silently ignoring the `tools` field (it doesn't support
+                // function calling). A manual retry would re-send the same
+                // `tools` and get the same empty result — so we transparently
+                // retry once WITHOUT tools. This frequently succeeds and spares
+                // the user a manual retry that wouldn't have helped.
+                if cfg.tools_enabled && !tried_without_tools {
+                    tried_without_tools = true;
+                    warn!(
+                        target: "ai_chat",
+                        round,
+                        "empty reply with tools — retrying without tools (likely unsupported function calling)"
+                    );
+                    continue;
+                }
                 let diag = explain_empty_reply(&outcome);
                 warn!(target: "ai_chat", round, "empty reply — {diag}");
                 emit_usage(&app, &last_usage);
@@ -1083,10 +1140,21 @@ pub async fn chat_stream(
 
             // Stalled tool intent: the model started to say "let me look that
             // up" but never emitted tool calls. This is a model capability
-            // issue, not a transient error.
+            // issue, not a transient error. Same auto-fallback as above: strip
+            // tools and retry once so the model answers directly instead of
+            // stalling on an intent it can't fulfill.
             if outcome.tool_calls.is_empty()
                 && looks_like_unfulfilled_tool_intent(&outcome.emitted_text)
             {
+                if cfg.tools_enabled && !tried_without_tools {
+                    tried_without_tools = true;
+                    warn!(
+                        target: "ai_chat",
+                        round,
+                        "stalled tool intent — retrying without tools"
+                    );
+                    continue;
+                }
                 let diag = format!(
                     "模型输出了「{}」后停止，未发起工具调用。最常见原因是当前模型不支持函数调用（function calling）。",
                     outcome.emitted_text.trim(),

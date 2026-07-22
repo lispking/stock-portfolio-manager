@@ -233,6 +233,16 @@ function toRecords(
     completion_tokens: m.usage?.completionTokens ?? 0,
     total_tokens: m.usage?.totalTokens ?? 0,
     cached_tokens: m.usage?.cachedTokens ?? 0,
+    // Persist reasoning (chain-of-thought) and tool-call details so they
+    // survive a reload / session switch — assistant turns only. Tool calls are
+    // serialised to a JSON string (the column is TEXT). Empty values are
+    // omitted (undefined → NULL on the backend, skipped by serde).
+    ...(m.reasoning && m.reasoning.trim().length > 0
+      ? { reasoning: m.reasoning }
+      : {}),
+    ...(m.toolCalls && m.toolCalls.length > 0
+      ? { tool_calls: JSON.stringify(m.toolCalls) }
+      : {}),
     // Persist as RFC3339 so backend `ORDER BY created_at ASC` sorts correctly.
     created_at: new Date(m.createdAt).toISOString(),
   }));
@@ -578,6 +588,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   cachedTokens: r.cached_tokens,
                 }
               : undefined,
+          // Restore persisted reasoning + tool calls so they're visible on
+          // re-open. tool_calls is a JSON string in the DB → parse to array.
+          ...(r.reasoning && r.reasoning.trim().length > 0
+            ? { reasoning: r.reasoning }
+            : {}),
+          ...(r.tool_calls
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(r.tool_calls);
+                  return Array.isArray(parsed) && parsed.length > 0
+                    ? { toolCalls: parsed }
+                    : {};
+                } catch (e) {
+                  console.warn(
+                    "[chatStore] failed to parse persisted tool_calls",
+                    e,
+                  );
+                  return {};
+                }
+              })()
+            : {}),
         })),
         error: null,
       });

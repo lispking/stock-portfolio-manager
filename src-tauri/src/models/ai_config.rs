@@ -64,6 +64,17 @@ pub struct ChatMessageRecord {
     pub total_tokens: u32,
     #[serde(default)]
     pub cached_tokens: u32,
+    /// Chain-of-thought text (reasoning_content) for thinking models. Stored
+    /// as plain TEXT. `None` for messages without reasoning (most user turns,
+    /// non-thinking models). Assistant turns only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    /// JSON array of tool-call details (one entry per executed tool) for
+    /// assistant turns that used tools. Stored as a JSON string. `None` when
+    /// the turn made no tool calls. The shape matches the frontend's
+    /// `ToolCallInfo`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<String>,
     pub created_at: String,
 }
 
