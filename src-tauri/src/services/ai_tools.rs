@@ -25,7 +25,7 @@ use crate::services::indicators;
 use crate::services::market_overview_service;
 use crate::services::performance_service::{self, PerformanceFilter};
 use crate::services::quote_provider_service;
-use crate::services::quote_service::{self, QuoteCache};
+use crate::services::quote_service::{self, resolve_index_secid, QuoteCache};
 use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 
@@ -540,6 +540,32 @@ async fn tool_stock_quote(ctx: &ToolCtx<'_>, args: &Value) -> ToolResult {
     if symbol.is_empty() {
         return ToolResult::err_json("symbol 不能为空");
     }
+
+    // Index symbols (^GSPC, HSI, 000300.SS, …) are NOT recognised by the stock
+    // fetchers (Yahoo 403s them, xueqiu/eastmoney stock endpoints return
+    // errors). Route them to the EastMoney index endpoint instead, which needs
+    // no auth and covers every major index. This is the fix for the
+    // "获取 ^GSPC 行情失败：HTTP 403" class of errors.
+    if let Some((secid, name)) = resolve_index_secid(&symbol) {
+        let market = if secid.starts_with("1.") || secid.starts_with("0.") {
+            "CN"
+        } else if secid == "100.HSI" {
+            "HK"
+        } else {
+            "US"
+        };
+        if let Some(cached) = ctx.quote_cache.get(&symbol) {
+            return ToolResult::ok_json(json!(cached));
+        }
+        return match quote_service::fetch_index_quote_eastmoney(secid, &symbol, market).await {
+            Ok(q) => {
+                ctx.quote_cache.set(q.clone());
+                ToolResult::ok_json(json!({ "quote": q, "index_name": name }))
+            }
+            Err(e) => ToolResult::err_json(format!("获取指数 {symbol}（{name}）行情失败：{e}")),
+        };
+    }
+
     let market = args
         .get("market")
         .and_then(|v| v.as_str())

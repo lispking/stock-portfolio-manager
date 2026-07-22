@@ -625,39 +625,72 @@ struct EastMoneyResponse {
     data: Option<EastMoneyData>,
 }
 
+/// Deserialize a numeric field that EastMoney sometimes returns as the
+/// string `"-"` (when the value doesn't exist for this instrument — e.g.
+/// market cap / P/E for a market index). Without this, serde fails the
+/// entire response parse because `"-"` is not a valid `f64`. We coerce any
+/// non-numeric value to `None` so the quote still parses.
+fn deserialize_lenient_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(serde_json::Value::Number(n)) => Ok(n.as_f64()),
+        // `"-"`, `""`, or any other non-numeric string → treat as missing.
+        _ => Ok(None),
+    }
+}
+
 /// Inner data of an East Money quote response.
 /// Field names follow the East Money API convention (f43, f44, …).
 /// With `fltt=2` the numeric fields are returned as floats/integers directly.
 /// All numeric fields use `f64` so they can accept both JSON integers and
 /// JSON floats (e.g. `30279` and `30279.0`) — serde rejects JSON floats
 /// when deserializing as `u64`.
+///
+/// Fields are deserialized via [`deserialize_lenient_f64`] because EastMoney
+/// returns `"-"` for metrics that don't apply to a given instrument (e.g.
+/// market cap, P/E, P/B for market indices), which would otherwise break
+/// the entire parse.
 #[derive(Debug, Deserialize, Default)]
 struct EastMoneyData {
     /// Current price
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f43: Option<f64>,
     /// Day high
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f44: Option<f64>,
     /// Day low
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f45: Option<f64>,
     /// Volume (lots / 手) — stored as f64 because the API may return
     /// the value with a decimal point (e.g. `30279.0`).
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f47: Option<f64>,
     /// Stock name (e.g. "贵州茅台")
     f58: Option<String>,
     /// Previous close
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f60: Option<f64>,
     /// Change amount
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f169: Option<f64>,
     /// Change percentage
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f170: Option<f64>,
     // ── Fundamentals (added for investment analysis) ──
     /// P/E ratio (TTM)
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f163: Option<f64>,
     /// P/B ratio
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f167: Option<f64>,
     /// Total market capitalisation (元)
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f116: Option<f64>,
     /// Turnover rate (percent)
+    #[serde(default, deserialize_with = "deserialize_lenient_f64")]
     f168: Option<f64>,
 }
 
@@ -797,6 +830,38 @@ pub async fn fetch_index_quote_eastmoney(
     // round-trips cleanly through the cache (keyed by display symbol).
     quote.symbol = display_symbol.to_string();
     Ok(quote)
+}
+
+/// Resolve a market-index symbol (in any common form) to an EastMoney secid.
+/// Returns `None` for non-index symbols so callers can fall through to the
+/// normal stock-quote path.
+///
+/// This exists because Yahoo Finance now 403s index symbols, and the stock
+/// fetchers (xueqiu/eastmoney) don't recognise index codes either. When a
+/// user or the AI asks for an index (e.g. "标普500" / "^GSPC" / "SPX"), the
+/// tool layer routes through here to the reliable EastMoney index endpoint.
+pub fn resolve_index_secid(symbol: &str) -> Option<(&'static str, &'static str)> {
+    // Normalise: strip leading ^, uppercase, strip .SS/.SZ suffixes for
+    // matching purposes. The display name is the second tuple element.
+    let s = symbol.trim().trim_start_matches('^').to_uppercase();
+    let s = s
+        .trim_end_matches(".SS")
+        .trim_end_matches(".SZ")
+        .to_string();
+    match s.as_str() {
+        "GSPC" | "SPX" | "INX" => Some(("100.SPX", "标普500")),
+        "IXIC" | "NDX" | "NASDAQ" | "COMP" => Some(("100.NDX", "纳斯达克")),
+        "DJI" | "DJIA" | "DOW" => Some(("100.DJIA", "道琼斯")),
+        "HSI" | "HANGSENG" => Some(("100.HSI", "恒生指数")),
+        "000300" | "CSI300" | "HS300" => Some(("1.000300", "沪深300")),
+        "000001" | "SSE" | "SHCOMP" => Some(("1.000001", "上证综指")),
+        "399001" | "SZCOMP" => Some(("0.399001", "深证成指")),
+        "399006" | "CHINEXT" | "CYB" => Some(("0.399006", "创业板指")),
+        "N225" | "NIKKEI" => Some(("100.N225", "日经225")),
+        "FTSE" | "UKX" => Some(("100.FTSE", "富时100")),
+        "DAX" => Some(("100.DAX", "德国DAX")),
+        _ => None,
+    }
 }
 
 /// Convert a symbol like "sh600519" or "sz000858" to the East Money secid
@@ -1746,15 +1811,22 @@ pub async fn fetch_stock_history_eastmoney(
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
 ) -> Result<Vec<(chrono::NaiveDate, f64)>, String> {
-    let secid = match market {
-        "HK" => to_eastmoney_hk_secid(symbol)?,
-        "US" => to_eastmoney_us_secid(symbol),
-        "CN" => to_eastmoney_secid(&symbol.to_lowercase())?,
-        _ => {
-            return Err(format!(
-                "Unsupported market '{}' for East Money history",
-                market
-            ))
+    // Index symbols (e.g. ^GSPC, HSI, 000300.SS) resolve to their own secid
+    // and must NOT go through the stock secid mappers (which would reject them
+    // or produce a wrong secid). Yahoo 403s these, so EastMoney is the path.
+    let secid = if let Some((idx_secid, _)) = resolve_index_secid(symbol) {
+        idx_secid.to_string()
+    } else {
+        match market {
+            "HK" => to_eastmoney_hk_secid(symbol)?,
+            "US" => to_eastmoney_us_secid(symbol),
+            "CN" => to_eastmoney_secid(&symbol.to_lowercase())?,
+            _ => {
+                return Err(format!(
+                    "Unsupported market '{}' for East Money history",
+                    market
+                ))
+            }
         }
     };
 
@@ -2356,6 +2428,26 @@ pub async fn fetch_stock_history(
 mod tests {
     use super::*;
 
+    #[test]
+    fn resolve_index_secid_handles_common_forms() {
+        // US indices — ^-prefixed, bare, and suffix-stripped.
+        assert_eq!(resolve_index_secid("^GSPC").unwrap().0, "100.SPX");
+        assert_eq!(resolve_index_secid("SPX").unwrap().0, "100.SPX");
+        assert_eq!(resolve_index_secid("^IXIC").unwrap().0, "100.NDX");
+        assert_eq!(resolve_index_secid("^DJI").unwrap().0, "100.DJIA");
+        // HK.
+        assert_eq!(resolve_index_secid("^HSI").unwrap().0, "100.HSI");
+        assert_eq!(resolve_index_secid("HSI").unwrap().0, "100.HSI");
+        // CN — with and without .SS suffix.
+        assert_eq!(resolve_index_secid("000300.SS").unwrap().0, "1.000300");
+        assert_eq!(resolve_index_secid("000001.SS").unwrap().0, "1.000001");
+        assert_eq!(resolve_index_secid("000300").unwrap().0, "1.000300");
+        // Non-index symbols return None.
+        assert!(resolve_index_secid("AAPL").is_none());
+        assert!(resolve_index_secid("0700.HK").is_none());
+        assert!(resolve_index_secid("sh600519").is_none());
+    }
+
     // Helper: build a synthetic East Money JSON response.
     #[allow(clippy::too_many_arguments)]
     fn make_eastmoney_response(
@@ -2416,6 +2508,20 @@ mod tests {
         let result = parse_eastmoney_quote("sh999999", "CN", resp);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("No data from East Money"));
+    }
+
+    #[test]
+    fn test_parse_eastmoney_index_with_dash_strings() {
+        // Overseas indices (NASDAQ, S&P, HSI) return `"-"` for fundamentals
+        // fields (market cap, P/E, P/B, turnover) that don't apply to them.
+        // The lenient deserializer must coerce those to None instead of
+        // failing the whole parse.
+        let body = r#"{"rc":0,"rt":4,"data":{"f43":25690.9,"f44":25841.31,"f45":25681.32,"f47":6651314688,"f58":"纳斯达克","f60":25837.21,"f169":853.69,"f170":3.30,"f116":"-","f163":"-","f167":"-","f168":"-"}}"#;
+        let resp = parse_eastmoney_body(body, "^IXIC").unwrap();
+        let quote = parse_eastmoney_quote("^IXIC", "US", resp).unwrap();
+        assert_eq!(quote.name, "纳斯达克");
+        assert!((quote.current_price - 25690.9).abs() < 0.01);
+        assert!((quote.change_percent - 3.30).abs() < 0.01);
     }
 
     #[test]

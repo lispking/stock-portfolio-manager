@@ -77,11 +77,24 @@ pub fn skills_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Materialise built-in skills into the user directory on first launch.
+/// Bump this when built-in skill content changes (trigger words, instructions,
+/// etc.). On startup, `export_builtin_skills` overwrites any built-in skill
+/// whose on-disk version is older than this — but ONLY if the user hasn't
+/// edited it (the `.builtin/{stem}` marker still exists). User-edited skills
+/// (marker removed by `save_skill`) are never auto-overwritten.
+const BUILTIN_SKILLS_VERSION: u32 = 3;
+
+/// Materialise built-in skills into the user directory on first launch, and
+/// auto-update them when [`BUILTIN_SKILLS_VERSION`] bumps.
 ///
-/// For each built-in skill: if no `.md` exists yet, write the embedded copy
-/// and record the stem under `.builtin/` so later `reset_skills` knows it is
-/// factory-shipped. Existing files are never overwritten — user edits win.
+/// For each built-in skill:
+/// - If no `.md` exists yet → write the embedded copy (first launch).
+/// - If a `.md` exists AND the `.builtin/{stem}` marker exists (user hasn't
+///   edited it) AND the recorded version is outdated → overwrite with the new
+///   embedded content. This is how trigger-word fixes reach existing users
+///   without requiring a manual "恢复内置".
+/// - If a `.md` exists but the marker is gone (user edited/deleted-then-remade
+///   it) → never overwrite; the user's version wins.
 pub fn export_builtin_skills(app: &AppHandle) -> Result<(), String> {
     let dir = skills_dir(app)?;
     let marker_dir = dir.join(BUILTIN_MARKER_DIR);
@@ -90,15 +103,28 @@ pub fn export_builtin_skills(app: &AppHandle) -> Result<(), String> {
     }
     for (stem, body) in BUILTIN_SKILLS {
         let path = dir.join(format!("{stem}.md"));
-        if !path.exists() {
-            fs::write(&path, body).map_err(|e| format!("写入内置技能 {stem} 失败：{e}"))?;
-        }
-        // Always (re)record the marker so reset_skills can find factory files
-        // even if the user copied the directory around.
         let marker = marker_dir.join(stem);
-        if !marker.exists() {
-            let _ = fs::write(&marker, "");
+
+        if !path.exists() {
+            // First launch (or user deleted it): write the factory version.
+            fs::write(&path, body).map_err(|e| format!("写入内置技能 {stem} 失败：{e}"))?;
+            let _ = fs::write(&marker, BUILTIN_SKILLS_VERSION.to_string());
+            continue;
         }
+
+        // File exists. If the user hasn't edited it (marker present) and the
+        // recorded version is outdated, update it to the latest factory content.
+        if marker.exists() {
+            let current_version = fs::read_to_string(&marker)
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .unwrap_or(0);
+            if current_version < BUILTIN_SKILLS_VERSION {
+                fs::write(&path, body).map_err(|e| format!("更新内置技能 {stem} 失败：{e}"))?;
+                let _ = fs::write(&marker, BUILTIN_SKILLS_VERSION.to_string());
+            }
+        }
+        // else: user edited this skill (marker removed by save_skill) → skip.
     }
     Ok(())
 }
