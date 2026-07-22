@@ -452,13 +452,36 @@ pub async fn fetch_us_quote(symbol: &str) -> Result<StockQuote, String> {
 }
 
 /// Fetch a US stock quote using the specified provider.
+///
+/// When `provider` is `xueqiu` but the request fails, it falls back to East
+/// Money, then to Yahoo — matching the resilient behaviour of
+/// [`fetch_stock_history`].
 pub async fn fetch_us_quote_with_provider(
     symbol: &str,
     provider: &str,
 ) -> Result<StockQuote, String> {
     match provider {
         "eastmoney" => fetch_eastmoney_us_quote(symbol).await,
-        "xueqiu" => fetch_xueqiu_us_quote(symbol).await,
+        "xueqiu" => match fetch_xueqiu_us_quote(symbol).await {
+            Ok(q) => Ok(q),
+            Err(e) => {
+                info!(
+                    "fetch_us_quote: Xueqiu failed for {}: {}, falling back to eastmoney",
+                    symbol, e
+                );
+                match fetch_eastmoney_us_quote(symbol).await {
+                    Ok(q) => Ok(q),
+                    Err(e2) => {
+                        warn!(
+                            "fetch_us_quote: EastMoney also failed for {}: {}, falling back to yahoo",
+                            symbol, e2
+                        );
+                        let yahoo_symbol = to_yahoo_symbol(symbol, "US");
+                        fetch_yahoo_quote(&yahoo_symbol, "US").await
+                    }
+                }
+            }
+        },
         _ => {
             let yahoo_symbol = to_yahoo_symbol(symbol, "US");
             fetch_yahoo_quote(&yahoo_symbol, "US").await
@@ -467,13 +490,42 @@ pub async fn fetch_us_quote_with_provider(
 }
 
 /// Fetch a HK stock quote using the specified provider.
+///
+/// When `provider` is `xueqiu` but the request fails, it falls back to East
+/// Money, then to Yahoo — matching the resilient behaviour of
+/// [`fetch_stock_history`].
 pub async fn fetch_hk_quote_with_provider(
     symbol: &str,
     provider: &str,
 ) -> Result<StockQuote, String> {
     match provider {
         "eastmoney" => fetch_eastmoney_hk_quote(symbol).await,
-        "xueqiu" => fetch_xueqiu_hk_quote(symbol).await,
+        "xueqiu" => match fetch_xueqiu_hk_quote(symbol).await {
+            Ok(q) => Ok(q),
+            Err(e) => {
+                info!(
+                    "fetch_hk_quote: Xueqiu failed for {}: {}, falling back to eastmoney",
+                    symbol, e
+                );
+                match fetch_eastmoney_hk_quote(symbol).await {
+                    Ok(q) => Ok(q),
+                    Err(e2) => {
+                        warn!(
+                            "fetch_hk_quote: EastMoney also failed for {}: {}, falling back to yahoo",
+                            symbol, e2
+                        );
+                        let yahoo_symbol = if symbol.ends_with(".HK")
+                            || symbol.ends_with(".hk")
+                        {
+                            symbol.to_string()
+                        } else {
+                            format!("{}.HK", symbol)
+                        };
+                        fetch_yahoo_quote(&yahoo_symbol, "HK").await
+                    }
+                }
+            }
+        },
         _ => {
             let yahoo_symbol = if symbol.ends_with(".HK") || symbol.ends_with(".hk") {
                 symbol.to_string()
@@ -492,12 +544,27 @@ pub async fn fetch_cn_quote(symbol: &str) -> Result<StockQuote, String> {
 }
 
 /// Fetch a CN A-share stock quote using the specified provider.
+///
+/// When `provider` is `xueqiu` but the request fails (e.g. an expired or
+/// missing session token — Xueqiu's homepage no longer issues `xq_a_token`
+/// without JavaScript), it transparently falls back to East Money so that
+/// quotes keep working. This mirrors the resilient chain already used by
+/// [`fetch_stock_history`].
 pub async fn fetch_cn_quote_with_provider(
     symbol: &str,
     provider: &str,
 ) -> Result<StockQuote, String> {
     match provider {
-        "xueqiu" => fetch_xueqiu_cn_quote(symbol).await,
+        "xueqiu" => match fetch_xueqiu_cn_quote(symbol).await {
+            Ok(q) => Ok(q),
+            Err(e) => {
+                info!(
+                    "fetch_cn_quote: Xueqiu failed for {}: {}, falling back to eastmoney",
+                    symbol, e
+                );
+                fetch_eastmoney_cn_quote(symbol).await
+            }
+        },
         // Default to eastmoney for CN
         _ => fetch_eastmoney_cn_quote(symbol).await,
     }
@@ -975,8 +1042,23 @@ async fn ensure_xueqiu_token() -> Result<(), String> {
         *XUEQIU_AUTO_COOKIE.lock().unwrap() = Some(token.clone());
     }
 
-    if status.is_success() || status.is_redirection() {
+    // Only mark the token as initialized when we actually obtained a token.
+    // Xueqiu's homepage now serves a 200 response without setting
+    // `xq_a_token` (the token is emitted via JavaScript), so a 200 alone is
+    // not a reliable success signal. Marking it initialized without a token
+    // would freeze the client into a permanently-unauthenticated state and
+    // suppress all subsequent re-attempts. Returning `Ok` here lets the caller
+    // proceed and fall back to other providers; a later call will retry the
+    // homepage visit.
+    if auto_token.is_some() {
         XUEQIU_TOKEN_INITIALIZED.store(true, Ordering::SeqCst);
+        Ok(())
+    } else if status.is_success() || status.is_redirection() {
+        warn!(
+            "ensure_xueqiu_token: Xueqiu homepage returned HTTP {} but no xq_a_token cookie; \
+             token not initialised, will retry on next request",
+            status
+        );
         Ok(())
     } else {
         Err(format!(
