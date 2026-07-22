@@ -64,6 +64,9 @@ const SUGGESTION_POOL: string[] = [
   // 期权 / 提醒
   "我还有哪些期权没到期？什么时候到期？",
   "我设的价格提醒触发了吗？",
+  // 归因 / 深度
+  "我的盈亏主要来自哪些股票和市场？帮我做个收益归因",
+  "帮我深度诊断一下苹果（AAPL）的行情和走势",
   // 建议
   "给出个性化的投资建议和改进方向",
   "基于当前持仓，我应该如何优化配置？",
@@ -616,6 +619,13 @@ function ChatPanel({
     () => pickRandom(SUGGESTION_POOL, 6, suggestionSeed),
     [suggestionSeed],
   );
+  // Quick skills: show 6 random enabled skills in the empty state rather than
+  // all of them (now 10 built-in). Reshuffles together with the "换一批" button
+  // via the same seed so one click refreshes both suggestions and skills.
+  const quickSkills = useMemo(
+    () => pickRandom(enabledSkills, 6, suggestionSeed + 1),
+    [enabledSkills, suggestionSeed],
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const loadedSessionRef = useRef<string | null>(null);
   // Set BEFORE calling ensureSession() when sending from the welcome screen.
@@ -1020,12 +1030,12 @@ function ChatPanel({
               />
             )}
 
-            {enabledSkills.length > 0 && (
+            {quickSkills.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 mt-4">
                 <Text type="secondary" style={{ fontSize: 13 }}>
                   <ThunderboltOutlined /> 快捷技能：
                 </Text>
-                {enabledSkills.map((s) => (
+                {quickSkills.map((s) => (
                   <Tooltip
                     key={s.id}
                     title={s.description || `使用「${s.name}」技能开始分析`}

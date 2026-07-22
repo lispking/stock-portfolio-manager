@@ -36,6 +36,27 @@ static BUILTIN_SKILLS: &[(&str, &str)] = &[
         "performance-diagnosis",
         include_str!("../skills/performance-diagnosis.md"),
     ),
+    ("market-pulse", include_str!("../skills/market-pulse.md")),
+    (
+        "stock-deep-dive",
+        include_str!("../skills/stock-deep-dive.md"),
+    ),
+    (
+        "return-attribution",
+        include_str!("../skills/return-attribution.md"),
+    ),
+    (
+        "dividend-income",
+        include_str!("../skills/dividend-income.md"),
+    ),
+    (
+        "allocation-checkup",
+        include_str!("../skills/allocation-checkup.md"),
+    ),
+    (
+        "options-review",
+        include_str!("../skills/options-review.md"),
+    ),
 ];
 
 /// Name of the hidden marker directory that tracks which skill files were
