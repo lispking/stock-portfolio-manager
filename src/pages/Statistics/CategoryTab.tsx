@@ -86,7 +86,6 @@ export default function CategoryTab({ selectedCategoryId, onCategoryChange, base
                   title={`类别总盈亏 (${baseCurrency})`}
                   value={`${stats.total_pnl >= 0 ? "+" : ""}${stats.total_pnl.toFixed(2)}`}
                   styles={{ content: {  color: pnlColor(stats.total_pnl)  } }}
-                  prefix={symbol}
                   suffix={`(${stats.total_pnl >= 0 ? "+" : ""}${stats.total_pnl_percent.toFixed(2)}%)`}
                 />
               </Card>

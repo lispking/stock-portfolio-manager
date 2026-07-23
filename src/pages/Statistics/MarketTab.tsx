@@ -220,7 +220,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="mb-4">
+      <div>
         <Select
           value={selectedMarket}
           onChange={onMarketChange}
