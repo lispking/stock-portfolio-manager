@@ -259,7 +259,6 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
                   title={`市场总盈亏 (${currencyCode})`}
                   value={`${stats.total_pnl >= 0 ? "+" : ""}${stats.total_pnl.toFixed(2)}`}
                   styles={{ content: {  color: pnlColor(stats.total_pnl)  } }}
-                  prefix={currencySymbol}
                   suffix={`(${stats.total_pnl >= 0 ? "+" : ""}${stats.total_pnl_percent.toFixed(2)}%)`}
                 />
               </Card>
