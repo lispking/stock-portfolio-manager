@@ -219,7 +219,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
   ], [currencySymbol, pnlColor]);
 
   return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="mb-4">
         <Select
           value={selectedMarket}
@@ -242,7 +242,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         <Empty description="该市场暂无持仓" />
       ) : (
         <>
-          <Row gutter={[16, 16]} className="mb-4">
+          <Row gutter={[16, 16]}>
             <Col xs={24} sm={8}>
               <Card>
                 <Statistic title={`市场总市值 (${currencyCode})`} value={stats.total_market_value.toFixed(2)} prefix={currencySymbol} />
