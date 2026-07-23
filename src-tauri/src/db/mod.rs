@@ -340,6 +340,11 @@ impl Database {
         ",
         )?;
 
+        // Migration: add tools_enabled column if missing.
+        let _ = conn.execute_batch(
+            "ALTER TABLE ai_config ADD COLUMN tools_enabled INTEGER NOT NULL DEFAULT 1;",
+        );
+
         // AI chat sessions & messages. Messages cascade-delete with their
         // session via the foreign key (FK enforcement is enabled at the top
         // of this function). Sessions are user-created named conversations;
@@ -366,12 +371,24 @@ impl Database {
                 completion_tokens INTEGER NOT NULL DEFAULT 0,
                 total_tokens INTEGER NOT NULL DEFAULT 0,
                 cached_tokens INTEGER NOT NULL DEFAULT 0,
+                -- Chain-of-thought text (reasoning_content) for thinking models.
+                -- NULL for messages without reasoning. Assistant turns only.
+                reasoning TEXT,
+                -- JSON array of ToolCallInfo (status/args/result/duration) for
+                -- assistant turns that called tools. NULL when none were used.
+                tool_calls TEXT,
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_chat_messages_session
                 ON chat_messages(session_id, created_at);
         ",
         )?;
+
+        // Add reasoning + tool_calls columns to existing chat_messages tables
+        // (migration for databases created before these columns existed). Both
+        // are nullable TEXT — older rows simply have no reasoning/tool data.
+        let _ = conn.execute_batch("ALTER TABLE chat_messages ADD COLUMN reasoning TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT;");
 
         conn.execute_batch(
             "

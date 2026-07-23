@@ -158,7 +158,7 @@ pub fn get_chat_messages(
     let mut stmt = conn
         .prepare(
             "SELECT id, session_id, role, content, prompt_tokens, completion_tokens,
-                    total_tokens, cached_tokens, created_at
+                    total_tokens, cached_tokens, reasoning, tool_calls, created_at
              FROM chat_messages
              WHERE session_id = ?1
              ORDER BY created_at ASC",
@@ -175,7 +175,9 @@ pub fn get_chat_messages(
                 completion_tokens: row.get(5)?,
                 total_tokens: row.get(6)?,
                 cached_tokens: row.get(7)?,
-                created_at: row.get(8)?,
+                reasoning: row.get(8)?,
+                tool_calls: row.get(9)?,
+                created_at: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -207,8 +209,8 @@ pub fn save_chat_messages(
         tx.execute(
             "INSERT INTO chat_messages
                 (id, session_id, role, content, prompt_tokens, completion_tokens,
-                 total_tokens, cached_tokens, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 total_tokens, cached_tokens, reasoning, tool_calls, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 m.id,
                 m.session_id,
@@ -218,6 +220,8 @@ pub fn save_chat_messages(
                 m.completion_tokens,
                 m.total_tokens,
                 m.cached_tokens,
+                m.reasoning,
+                m.tool_calls,
                 m.created_at,
             ],
         )

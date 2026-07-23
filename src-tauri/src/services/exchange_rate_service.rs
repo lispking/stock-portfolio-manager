@@ -5,6 +5,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tracing::warn;
 
 const CACHE_TTL_SECS: u64 = 10 * 60; // 10-minute cache
 
@@ -167,15 +168,15 @@ pub async fn get_cached_rates(
             cache.set(rates.clone());
             // Persist to DB so an offline restart can still use the last known rates.
             if let Err(e) = save_exchange_rates_to_db(db, &rates) {
-                eprintln!("Warning: failed to persist exchange rates to DB: {}", e);
+                warn!("failed to persist exchange rates to DB: {}", e);
             }
             Ok(rates)
         }
         Err(e) => {
             // Offline fallback 1: stale in-memory cache.
             if let Some(stale) = cache.get_stale() {
-                eprintln!(
-                    "Warning: could not fetch fresh exchange rates ({}), using stale in-memory cache",
+                warn!(
+                    "could not fetch fresh exchange rates ({}), using stale in-memory cache",
                     e
                 );
                 return Ok(stale);
@@ -185,8 +186,8 @@ pub async fn get_cached_rates(
             // so that the next request still attempts a live fetch.
             match load_exchange_rates_from_db(db) {
                 Ok(Some(persisted)) => {
-                    eprintln!(
-                        "Warning: could not fetch fresh exchange rates ({}), using DB-persisted cache ({})",
+                    warn!(
+                        "could not fetch fresh exchange rates ({}), using DB-persisted cache ({})",
                         e, persisted.updated_at
                     );
                     Ok(persisted)

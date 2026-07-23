@@ -5,6 +5,7 @@ use crate::models::option::{
 };
 use crate::models::stock_split::StockSplit;
 use tauri::State;
+use tracing::warn;
 
 /// Parse the option symbol like "PDD 20FEB26 100 P" or "BRK B 16JUN23 330 C" into components.
 /// Returns (underlying, expiry_date, strike_price, option_type)
@@ -210,9 +211,9 @@ pub fn import_options_csv(
     }
 
     if !errors.is_empty() {
-        eprintln!("[期权导入] 错误 {} 条:", errors.len());
+        warn!("[期权导入] 错误 {} 条:", errors.len());
         for e in &errors {
-            eprintln!("  - {}", e);
+            warn!("  - {}", e);
         }
     }
 
@@ -1044,7 +1045,7 @@ fn get_field(
 /// Internal helper that doesn't require State wrapper.
 /// Uses pre-computed contract_status from the DB for fast loading; avoids
 /// the expensive open-vs-close quantity matching on every call.
-fn get_option_contracts_inner(
+pub fn get_option_contracts_inner(
     db: &Database,
     account_id: &str,
 ) -> Result<Vec<OptionContract>, String> {

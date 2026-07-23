@@ -3,11 +3,11 @@ use crate::models::{HoldingWithQuote, StockQuote};
 use crate::services::quote_provider_service;
 use crate::services::quote_service::{
     fetch_cn_quote_with_provider, fetch_hk_quote_with_provider,
-    fetch_quotes_batch_cached_with_providers, fetch_us_quote_with_provider,
-    get_quote_refresh_time, save_quote_refresh_time, save_quotes_to_db, QuoteCache,
-    CASH_SYMBOL_PREFIX,
+    fetch_quotes_batch_cached_with_providers, fetch_us_quote_with_provider, get_quote_refresh_time,
+    save_quote_refresh_time, save_quotes_to_db, QuoteCache, CASH_SYMBOL_PREFIX,
 };
 use tauri::State;
+use tracing::warn;
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_real_time_quotes(
@@ -29,10 +29,10 @@ pub async fn get_real_time_quotes(
     .await?;
     // Persist freshly fetched quotes to the database
     if let Err(e) = save_quotes_to_db(&db, &quotes) {
-        eprintln!("Failed to persist quotes to DB: {}", e);
+        warn!("Failed to persist quotes to DB: {}", e);
     }
     if let Err(e) = save_quote_refresh_time(&db) {
-        eprintln!("Failed to persist quote refresh time: {}", e);
+        warn!("Failed to persist quote refresh time: {}", e);
     }
     Ok(quotes)
 }
@@ -111,7 +111,7 @@ pub async fn get_holding_quotes(
                 ) {
                     Ok(data) => data,
                     Err(e) => {
-                        eprintln!("Failed to compute realized PnL for holding {}: {}", h.id, e);
+                        warn!("Failed to compute realized PnL for holding {}: {}", h.id, e);
                         (0.0, 0.0)
                     }
                 };
@@ -181,10 +181,10 @@ pub async fn get_holding_quotes(
     };
     // Persist freshly fetched quotes to the database
     if let Err(e) = save_quotes_to_db(&db, &quotes) {
-        eprintln!("Failed to persist quotes to DB: {}", e);
+        warn!("Failed to persist quotes to DB: {}", e);
     }
     if let Err(e) = save_quote_refresh_time(&db) {
-        eprintln!("Failed to persist quote refresh time: {}", e);
+        warn!("Failed to persist quote refresh time: {}", e);
     }
     let quote_map: std::collections::HashMap<String, StockQuote> =
         quotes.into_iter().map(|q| (q.symbol.clone(), q)).collect();
@@ -265,10 +265,10 @@ pub async fn get_us_quote(
     let quote = fetch_us_quote_with_provider(&symbol, &config.us_provider).await?;
     quote_cache.set(quote.clone());
     if let Err(e) = save_quotes_to_db(&db, std::slice::from_ref(&quote)) {
-        eprintln!("Failed to persist quote to DB: {}", e);
+        warn!("Failed to persist quote to DB: {}", e);
     }
     if let Err(e) = save_quote_refresh_time(&db) {
-        eprintln!("Failed to persist quote refresh time: {}", e);
+        warn!("Failed to persist quote refresh time: {}", e);
     }
     Ok(quote)
 }
@@ -286,10 +286,10 @@ pub async fn get_hk_quote(
     let quote = fetch_hk_quote_with_provider(&symbol, &config.hk_provider).await?;
     quote_cache.set(quote.clone());
     if let Err(e) = save_quotes_to_db(&db, std::slice::from_ref(&quote)) {
-        eprintln!("Failed to persist quote to DB: {}", e);
+        warn!("Failed to persist quote to DB: {}", e);
     }
     if let Err(e) = save_quote_refresh_time(&db) {
-        eprintln!("Failed to persist quote refresh time: {}", e);
+        warn!("Failed to persist quote refresh time: {}", e);
     }
     Ok(quote)
 }
@@ -307,17 +307,15 @@ pub async fn get_cn_quote(
     let quote = fetch_cn_quote_with_provider(&symbol, &config.cn_provider).await?;
     quote_cache.set(quote.clone());
     if let Err(e) = save_quotes_to_db(&db, std::slice::from_ref(&quote)) {
-        eprintln!("Failed to persist quote to DB: {}", e);
+        warn!("Failed to persist quote to DB: {}", e);
     }
     if let Err(e) = save_quote_refresh_time(&db) {
-        eprintln!("Failed to persist quote refresh time: {}", e);
+        warn!("Failed to persist quote refresh time: {}", e);
     }
     Ok(quote)
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub fn get_last_quote_refresh_time(
-    db: State<'_, Database>,
-) -> Result<Option<String>, String> {
+pub fn get_last_quote_refresh_time(db: State<'_, Database>) -> Result<Option<String>, String> {
     get_quote_refresh_time(&db)
 }

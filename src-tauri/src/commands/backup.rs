@@ -2,6 +2,7 @@ use crate::db::Database;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{Manager, State};
+use tracing::{info, warn};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct BackupConfig {
@@ -142,7 +143,7 @@ pub fn auto_backup_if_needed(app: &tauri::AppHandle) {
 
     let backup_dir = std::path::PathBuf::from(config.directory.as_ref().unwrap());
     if let Err(e) = std::fs::create_dir_all(&backup_dir) {
-        eprintln!("[auto-backup] failed to create dir: {}", e);
+        warn!("[auto-backup] failed to create dir: {}", e);
         return;
     }
 
@@ -152,15 +153,15 @@ pub fn auto_backup_if_needed(app: &tauri::AppHandle) {
 
     match std::fs::copy(&db_path_str, &dest) {
         Ok(_) => {
-            eprintln!("[auto-backup] saved to {}", dest.display());
+            info!("[auto-backup] saved to {}", dest.display());
             let mut new_config = config;
             new_config.last_backup_mtime = file_mtime_secs(&db_path_str);
             new_config.last_backup_size = file_size(&db_path_str);
             new_config.last_backup_time = Some(chrono::Utc::now().to_rfc3339());
             if let Err(e) = save_config(app, &new_config) {
-                eprintln!("[auto-backup] failed to save config: {}", e);
+                warn!("[auto-backup] failed to save config: {}", e);
             }
         }
-        Err(e) => eprintln!("[auto-backup] failed: {}", e),
+        Err(e) => warn!("[auto-backup] failed: {}", e),
     }
 }

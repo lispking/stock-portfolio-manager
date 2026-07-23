@@ -7,6 +7,7 @@ import type {
   ChatMessageRecord,
   ChatMessageWithMeta,
   ChatUsage,
+  ToolCallInfo,
 } from "../types";
 
 interface ChatState {
@@ -60,6 +61,15 @@ interface ChatState {
    * path as `sendMessage`.
    */
   retryLastTurn: (sessionId: string) => Promise<void>;
+  /**
+   * Regenerate a specific assistant turn: drop that assistant message and
+   * everything after it, then re-issue `chat_with_ai` using the user turn that
+   * preceded it. Unlike `retryLastTurn` (which only retries *failed* turns),
+   * this works on a completed assistant answer — the Claude/ZCode "regenerate"
+   * affordance. Re-applies any explicit skill selection captured on the
+   * original turn. No-op while another stream is running.
+   */
+  regenerateMessage: (messageId: string, sessionId: string) => Promise<void>;
   /**
    * Remove a failed assistant placeholder from the message list. Used by the
    * "忽略" button on an error card so the user can clean up the conversation
@@ -223,6 +233,16 @@ function toRecords(
     completion_tokens: m.usage?.completionTokens ?? 0,
     total_tokens: m.usage?.totalTokens ?? 0,
     cached_tokens: m.usage?.cachedTokens ?? 0,
+    // Persist reasoning (chain-of-thought) and tool-call details so they
+    // survive a reload / session switch — assistant turns only. Tool calls are
+    // serialised to a JSON string (the column is TEXT). Empty values are
+    // omitted (undefined → NULL on the backend, skipped by serde).
+    ...(m.reasoning && m.reasoning.trim().length > 0
+      ? { reasoning: m.reasoning }
+      : {}),
+    ...(m.toolCalls && m.toolCalls.length > 0
+      ? { tool_calls: JSON.stringify(m.toolCalls) }
+      : {}),
     // Persist as RFC3339 so backend `ORDER BY created_at ASC` sorts correctly.
     created_at: new Date(m.createdAt).toISOString(),
   }));
@@ -470,6 +490,64 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }).catch((e) => {
       console.error("[chatStore] failed to bind ai-chat-skill listener", e);
     });
+
+    // The backend tells us which data tools it just executed for the in-flight
+    // turn (e.g. get_market_overview, get_stock_quote). Tool calls can happen
+    // across multiple rounds within one turn, so we accumulate names (deduped,
+    // order-preserving) rather than replacing them — the badge grows to reflect
+    // every fetch that informed the final answer.
+    listen<string[]>("ai-chat-tool", (event) => {
+      const names = event.payload;
+      if (!Array.isArray(names) || names.length === 0 || !streamingId) return;
+      applyStreamUpdate(set, (m) => {
+        const seen = new Set(m.usedTools ?? []);
+        const merged = [...(m.usedTools ?? [])];
+        for (const n of names) {
+          if (!seen.has(n)) {
+            seen.add(n);
+            merged.push(n);
+          }
+        }
+        return { ...m, usedTools: merged };
+      });
+    }).catch((e) => {
+      console.error("[chatStore] failed to bind ai-chat-tool listener", e);
+    });
+
+    // Stream the model's chain-of-thought (reasoning_content) so the UI can
+    // render a live, collapsible "思考过程" block. Behaves exactly like
+    // ai-chat-delta: append to the in-flight message (foreground or background).
+    listen<string>("ai-chat-reasoning", (event) => {
+      const token = event.payload;
+      if (!token || !streamingId) return;
+      applyStreamUpdate(set, (m) => ({
+        ...m,
+        reasoning: (m.reasoning ?? "") + token,
+      }));
+    }).catch((e) => {
+      console.error("[chatStore] failed to bind ai-chat-reasoning listener", e);
+    });
+
+    // Detailed per-tool-call lifecycle: the backend emits a ToolCallEvent with
+    // status "running" before execution and "success"/"error" + result/error
+    // + durationMs after. We upsert by id so a running card updates in place
+    // when its result arrives. Replaces the coarse name-only badge.
+    listen<ToolCallInfo>("ai-chat-tool-call", (event) => {
+      const tc = event.payload;
+      if (!tc || !tc.id || !streamingId) return;
+      applyStreamUpdate(set, (m) => {
+        const list = m.toolCalls ? [...m.toolCalls] : [];
+        const idx = list.findIndex((c) => c.id === tc.id);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...tc };
+        } else {
+          list.push(tc);
+        }
+        return { ...m, toolCalls: list };
+      });
+    }).catch((e) => {
+      console.error("[chatStore] failed to bind ai-chat-tool-call listener", e);
+    });
   },
 
   loadSessionMessages: async (sessionId) => {
@@ -510,6 +588,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   cachedTokens: r.cached_tokens,
                 }
               : undefined,
+          // Restore persisted reasoning + tool calls so they're visible on
+          // re-open. tool_calls is a JSON string in the DB → parse to array.
+          ...(r.reasoning && r.reasoning.trim().length > 0
+            ? { reasoning: r.reasoning }
+            : {}),
+          ...(r.tool_calls
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(r.tool_calls);
+                  return Array.isArray(parsed) && parsed.length > 0
+                    ? { toolCalls: parsed }
+                    : {};
+                } catch (e) {
+                  console.warn(
+                    "[chatStore] failed to parse persisted tool_calls",
+                    e,
+                  );
+                  return {};
+                }
+              })()
+            : {}),
         })),
         error: null,
       });
@@ -744,6 +843,59 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  regenerateMessage: async (messageId, sessionId) => {
+    if (get().sending) return;
+    const messages = get().messages;
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+    const target = messages[idx];
+    if (target.role !== "assistant") return;
+
+    // Keep everything before this assistant turn (the last element is the user
+    // turn that prompted it). Drop the target assistant message and anything
+    // after it so a fresh answer replaces the old one.
+    const truncated = messages.slice(0, idx);
+    const history = buildHistory(truncated);
+
+    // Re-apply the explicit skill selection captured on the original turn so
+    // regenerate preserves a `/`-picked skill. Fall back to auto-match otherwise.
+    const activeSkills = target.explicitSkillIds ?? [];
+
+    // New placeholder so React sees a distinct key (the old row is dropped).
+    const assistantMsg: ChatMessageWithMeta = {
+      id: newId(),
+      role: "assistant",
+      content: "",
+      createdAt: Date.now() + 1,
+      ...(activeSkills.length > 0 ? { explicitSkillIds: activeSkills } : {}),
+    };
+    streamingId = assistantMsg.id;
+    streamingSessionId = sessionId;
+
+    set({
+      messages: [...truncated, assistantMsg],
+      sending: true,
+      error: null,
+      streamingSessionIdState: sessionId,
+    });
+
+    // Persist the truncated history immediately so the dropped assistant turns
+    // are removed from storage even if this regeneration later fails.
+    void persistMessages(sessionId, truncated);
+
+    try {
+      await invoke("chat_with_ai", {
+        req: {
+          messages: history,
+          includeContext: get().contextEnabled,
+          activeSkills,
+        },
+      });
+    } catch (err) {
+      failStreamingMessage(set, String(err));
+    }
+  },
+
   dismissError: (messageId) => {
     set((s) => ({
       messages: s.messages.filter((m) => m.id !== messageId),
@@ -836,7 +988,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // messages belong to a different session and must be preserved.
     const wipeView = bg?.sessionId !== sessionId;
     set({
-      ...(wipeView ? {} : { messages: [] }),
+      ...(wipeView ? { messages: [] } : {}),
       sending: false,
       streamingInBackground: false,
       streamingSessionIdState: null,

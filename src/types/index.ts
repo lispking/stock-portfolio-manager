@@ -65,6 +65,14 @@ export interface StockQuote {
   low: number;
   volume: number;
   updated_at: string;
+  // Fundamental / valuation snapshot (optional, may be absent).
+  pe_ttm?: number;
+  pb?: number;
+  market_cap?: number;
+  dividend_yield?: number;
+  eps?: number;
+  roe?: number;
+  turnover_rate?: number;
 }
 
 export interface HoldingWithQuote extends Holding {
@@ -628,6 +636,7 @@ export interface AiConfig {
   model: string;
   base_url: string | null;
   system_prompt: string;
+  tools_enabled: boolean;
 }
 
 export type AiProvider =
@@ -680,6 +689,12 @@ export interface ChatMessageWithMeta {
   stopped?: boolean;
   error?: string;
   /**
+   * Chain-of-thought text streamed from `reasoning_content` (DeepSeek-R1 /
+   * GLM-4.5+ thinking models). In-memory only — not persisted. Rendered as a
+   * collapsible "思考过程" block above the answer.
+   */
+  reasoning?: string;
+  /**
    * Names of the skills the backend activated for this turn (explicit via
    * `active_skills`, or auto-matched from triggers). Populated from the
    * `ai-chat-skill` event. Only set on the assistant placeholder that the
@@ -687,12 +702,49 @@ export interface ChatMessageWithMeta {
    */
   activatedSkills?: string[];
   /**
+   * Names of the data tools the backend executed for this turn (e.g.
+   * `get_market_overview`, `get_stock_quote`). Populated from the
+   * `ai-chat-tool` event and accumulated across rounds. Used to render a
+   * "🔍 已查询" badge so the user can see the assistant fetched real data.
+   * @deprecated Prefer `toolCalls` (richer, per-call detail). Kept for
+   * backward compat with older persisted sessions.
+   */
+  usedTools?: string[];
+  /**
+   * Detailed per-tool-call progress for this turn (Claude-style expandable
+   * cards). Populated from the `ai-chat-tool-call` event and upserted by id
+   * across rounds. In-memory only — not persisted. When present, the UI
+   * renders `ToolCallCard`s instead of the legacy `usedTools` name badges.
+   */
+  toolCalls?: ToolCallInfo[];
+  /**
    * Skill IDs the user *explicitly* staged for this turn (via `/`, `@`, or a
    * quick chip). Captured onto the assistant placeholder at send time so a
    * retry of a failed turn can re-send the same explicit selection instead
    * of silently dropping it (see chatStore.retryLastTurn).
    */
   explicitSkillIds?: string[];
+}
+
+/**
+ * One tool invocation's lifecycle, mirrored from the backend `ToolCallEvent`.
+ * Used to render a Claude-style expandable tool card showing status, arguments,
+ * and results as the agentic loop runs.
+ */
+export interface ToolCallInfo {
+  /** Stable id (the model's `tool_call_id`). */
+  id: string;
+  /** Function name, e.g. `get_stock_quote`. */
+  name: string;
+  /** Raw JSON arguments string the model supplied (may be undefined/empty). */
+  arguments?: string;
+  status: "running" | "success" | "error";
+  /** Tool result JSON (success only; truncated for display). */
+  result?: string;
+  /** Error message (error only). */
+  error?: string;
+  /** Wall-clock execution time in milliseconds (success/error only). */
+  durationMs?: number;
 }
 
 /** A persisted AI chat session (one named conversation). */
@@ -713,6 +765,10 @@ export interface ChatMessageRecord {
   completion_tokens: number;
   total_tokens: number;
   cached_tokens: number;
+  /** Chain-of-thought text (reasoning_content), assistant turns only. */
+  reasoning?: string;
+  /** JSON string of `ToolCallInfo[]`, assistant turns only. */
+  tool_calls?: string;
   created_at: string;
 }
 

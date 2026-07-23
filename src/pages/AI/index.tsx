@@ -230,6 +230,7 @@ function ApiSettingsCard() {
         model: values.model,
         base_url: values.base_url || null,
         system_prompt: values.system_prompt,
+        tools_enabled: config?.tools_enabled ?? true,
       });
       if (success) {
         message.success("AI 配置已保存");

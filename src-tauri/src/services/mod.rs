@@ -1,10 +1,13 @@
 pub mod ai_chat_service;
 pub mod ai_config_service;
 pub mod ai_models_service;
+pub mod ai_tools;
 pub mod alert_service;
 pub mod exchange_rate_service;
 pub mod http_client;
 pub mod import_export_service;
+pub mod indicators;
+pub mod market_overview_service;
 pub mod performance_service;
 pub mod quarterly_service;
 pub mod quote_provider_service;
