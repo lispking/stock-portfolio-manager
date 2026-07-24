@@ -261,7 +261,7 @@ function ApiSettingsCard() {
                   <Space>
                     <span>{p.label}</span>
                     <Tooltip title={p.hint}>
-                      <InfoCircleOutlined style={{ color: "#999" }} />
+                      <InfoCircleOutlined style={{ color: "var(--color-text-tertiary)" }} />
                     </Tooltip>
                   </Space>
                 ),

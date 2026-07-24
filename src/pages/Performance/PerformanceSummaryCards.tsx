@@ -32,7 +32,7 @@ function PctStat({
           <span>
             {title}{" "}
             <Tooltip title={tooltip}>
-              <InfoCircleOutlined style={{ fontSize: 12, color: "#999" }} />
+              <InfoCircleOutlined style={{ fontSize: 12, color: "var(--color-text-tertiary)" }} />
             </Tooltip>
           </span>
         ) : (
@@ -111,7 +111,7 @@ export default function PerformanceSummaryCards({ summary, loading, currency = "
               <span>
                 夏普比率{" "}
                 <Tooltip title="（年化收益率 − 无风险利率）/ 年化波动率，无风险利率默认 4.5%">
-                  <InfoCircleOutlined style={{ fontSize: 12, color: "#999" }} />
+                  <InfoCircleOutlined style={{ fontSize: 12, color: "var(--color-text-tertiary)" }} />
                 </Tooltip>
               </span>
             }

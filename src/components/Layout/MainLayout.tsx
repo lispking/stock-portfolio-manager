@@ -86,8 +86,8 @@ export default function MainLayout({ children }: Props) {
       </Sider>
       <Layout style={{ height: "100vh", overflow: "hidden" }}>
         <Content
-          className="p-6 bg-gray-50"
-          style={{ height: "100%", overflowY: "auto" }}
+          className="p-6"
+          style={{ height: "100%", overflowY: "auto", backgroundColor: "var(--color-bg-layout)" }}
         >
           {children}
         </Content>

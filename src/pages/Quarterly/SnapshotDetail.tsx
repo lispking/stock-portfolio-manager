@@ -201,7 +201,7 @@ export default function SnapshotDetail() {
             {categorySlices(holdings).map(({ name, color }) => (
               <span key={name} className="flex items-center gap-1 text-sm">
                 <span
-                  style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, background: color ?? "#999", flexShrink: 0 }}
+                  style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, background: color ?? "var(--color-text-tertiary)", flexShrink: 0 }}
                 />
                 {name}
               </span>

@@ -20,7 +20,7 @@ export default function RiskMetricsPanel({ metrics, loading }: Props) {
                 <span>
                   日波动率{" "}
                   <Tooltip title="日收益率标准差">
-                    <InfoCircleOutlined style={{ fontSize: 11, color: "#999" }} />
+                    <InfoCircleOutlined style={{ fontSize: 11, color: "var(--color-text-tertiary)" }} />
                   </Tooltip>
                 </span>
               }
@@ -38,7 +38,7 @@ export default function RiskMetricsPanel({ metrics, loading }: Props) {
                 <span>
                   年化波动率{" "}
                   <Tooltip title="日波动率 × √252">
-                    <InfoCircleOutlined style={{ fontSize: 11, color: "#999" }} />
+                    <InfoCircleOutlined style={{ fontSize: 11, color: "var(--color-text-tertiary)" }} />
                   </Tooltip>
                 </span>
               }
@@ -56,7 +56,7 @@ export default function RiskMetricsPanel({ metrics, loading }: Props) {
                 <span>
                   夏普比率{" "}
                   <Tooltip title={`(年化收益 − 无风险利率 ${metrics?.risk_free_rate?.toFixed(1) ?? 4.5}%) / 年化波动率`}>
-                    <InfoCircleOutlined style={{ fontSize: 11, color: "#999" }} />
+                    <InfoCircleOutlined style={{ fontSize: 11, color: "var(--color-text-tertiary)" }} />
                   </Tooltip>
                 </span>
               }
@@ -89,7 +89,7 @@ export default function RiskMetricsPanel({ metrics, loading }: Props) {
                 <span>
                   卡玛比率{" "}
                   <Tooltip title="年化收益率 / 最大回撤（绝对值）">
-                    <InfoCircleOutlined style={{ fontSize: 11, color: "#999" }} />
+                    <InfoCircleOutlined style={{ fontSize: 11, color: "var(--color-text-tertiary)" }} />
                   </Tooltip>
                 </span>
               }

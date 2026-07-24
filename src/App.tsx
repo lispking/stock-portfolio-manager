@@ -92,7 +92,7 @@ function App() {
           zIndex: 9999,
           maxWidth: 400,
           width: "calc(100vw - 32px)",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          boxShadow: "0 4px 12px color-mix(in srgb, var(--color-text) 15%, transparent)",
           borderRadius: 8,
         }}>
           <Alert

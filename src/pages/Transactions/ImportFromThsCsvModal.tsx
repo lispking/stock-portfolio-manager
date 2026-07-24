@@ -584,10 +584,10 @@ export default function ImportFromThsCsvModal({
       key: "status",
       width: 40,
       render: (_: unknown, record: EditableRow) => {
-        if (record.importOk) return <CheckCircleOutlined style={{ color: "#52c41a" }} />;
+        if (record.importOk) return <CheckCircleOutlined style={{ color: "var(--color-success)" }} />;
         if (record.importError)
           return (
-            <CloseCircleOutlined style={{ color: "#ff4d4f" }} title={record.importError} />
+            <CloseCircleOutlined style={{ color: "var(--color-error)" }} title={record.importError} />
           );
         return null;
       },

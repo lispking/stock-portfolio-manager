@@ -273,7 +273,7 @@ export default function QuarterlyTransactionsSection({ groups, loading }: Props)
       }
     >
       {groups.length === 0 ? (
-        <div style={{ textAlign: "center", color: "#999", padding: "16px 0" }}>
+        <div style={{ textAlign: "center", color: "var(--color-text-tertiary)", padding: "16px 0" }}>
           本季度暂无交易记录
         </div>
       ) : (

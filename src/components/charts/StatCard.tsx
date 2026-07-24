@@ -40,7 +40,7 @@ export default function StatCard({
         <div style={{ marginTop: 4, color: changeColor, fontSize: 13 }}>
           {change >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}{" "}
           {Math.abs(change).toFixed(2)}%
-          {changeLabel && <span style={{ color: "#888", marginLeft: 4 }}>{changeLabel}</span>}
+          {changeLabel && <span style={{ color: "var(--color-text-tertiary)", marginLeft: 4 }}>{changeLabel}</span>}
         </div>
       )}
     </Card>

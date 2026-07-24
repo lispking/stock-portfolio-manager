@@ -194,7 +194,7 @@ export default function AiAssistantPage() {
             navigate={navigate}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
+          <div className="flex-1 flex items-center justify-center" style={{ color: "var(--color-text-tertiary)" }}>
             <Text type="secondary">加载中…</Text>
           </div>
         )}
@@ -237,7 +237,7 @@ function SessionSidebar({
     // icons below (active one highlighted). The "new chat" action just
     // switches to the welcome screen — no session is created until send.
     return (
-      <aside className="w-14 flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col items-center py-2 gap-1">
+      <aside className="w-14 flex-shrink-0 border-r flex flex-col items-center py-2 gap-1" style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-layout)" }}>
         <Tooltip title="新聊天" placement="right">
           <Button
             type="primary"
@@ -254,7 +254,7 @@ function SessionSidebar({
             onClick={() => setCollapsed(false)}
           />
         </Tooltip>
-        <div className="w-full h-px bg-gray-200 my-1" />
+        <div className="w-full h-px my-1" style={{ backgroundColor: "var(--color-border)" }} />
         <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-1 px-1">
           {sessions.map((s) => {
             const isActive = s.id === currentSessionId;
@@ -269,11 +269,11 @@ function SessionSidebar({
               >
                 <button
                   onClick={() => onSelect(s.id)}
-                  className={`relative w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium transition-colors flex-shrink-0 ${
-                    isActive
-                      ? "bg-purple-500 text-white"
-                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                  }`}
+                  className={`relative w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium transition-colors flex-shrink-0`}
+                  style={{
+                    backgroundColor: isActive ? "var(--color-info)" : "var(--color-border)",
+                    color: isActive ? "white" : "var(--color-text-secondary)",
+                  }}
                 >
                   {sessionInitial(s.name)}
                   {isStreaming && (
@@ -292,8 +292,8 @@ function SessionSidebar({
   }
 
   return (
-    <aside className="w-60 flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col">
-      <div className="p-2 border-b border-gray-200 flex items-center gap-2">
+    <aside className="w-60 flex-shrink-0 border-r flex flex-col" style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-layout)" }}>
+      <div className="p-2 border-b flex items-center gap-2" style={{ borderColor: "var(--color-border)" }}>
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -312,7 +312,7 @@ function SessionSidebar({
       </div>
       <div className="flex-1 overflow-y-auto py-2">
         {sessions.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-gray-400">
+          <div className="px-4 py-6 text-center text-xs" style={{ color: "var(--color-text-tertiary)" }}>
             暂无聊天记录
           </div>
         ) : (
@@ -388,7 +388,7 @@ function SessionItem({
           suffix={
             <CheckOutlined
               onClick={submitRename}
-              style={{ color: "#52c41a", cursor: "pointer" }}
+              style={{ color: "var(--color-success)", cursor: "pointer" }}
             />
           }
         />
@@ -398,14 +398,22 @@ function SessionItem({
 
   return (
     <div
-      className={`group flex items-center gap-2 px-2 mx-2 my-0.5 py-2 rounded cursor-pointer transition-colors ${
-        active ? "bg-purple-100 text-purple-900" : "hover:bg-gray-200 text-gray-700"
-      }`}
+      className="group flex items-center gap-2 px-2 mx-2 my-0.5 py-2 rounded cursor-pointer transition-colors"
+      style={{
+        backgroundColor: active ? "color-mix(in srgb, var(--color-info) 15%, transparent)" : "transparent",
+        color: "var(--color-text)",
+      }}
       onClick={onSelect}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--color-text) 8%, transparent)";
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.backgroundColor = "transparent";
+      }}
     >
       {streaming ? (
         <LoadingOutlined
-          style={{ fontSize: 14, flexShrink: 0, color: "#7c3aed" }}
+          style={{ fontSize: 14, flexShrink: 0, color: "var(--color-info)" }}
         />
       ) : (
         <MessageOutlined style={{ fontSize: 14, flexShrink: 0 }} />
@@ -420,14 +428,14 @@ function SessionItem({
           </div>
           {streaming && (
             <span
-              className="flex-shrink-0 text-xs text-purple-500"
-              style={{ fontSize: 11 }}
+              className="flex-shrink-0 text-xs"
+              style={{ fontSize: 11, color: "var(--color-info)" }}
             >
               生成中…
             </span>
           )}
         </div>
-        <div className="text-xs text-gray-400">
+        <div className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
           {streaming ? "AI 正在回复" : formatRelativeTime(session.updated_at)}
         </div>
       </div>
@@ -917,7 +925,7 @@ function ChatPanel({
 
       {hasMessages ? (
         <>
-          <div className="flex-1 overflow-y-auto bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex-1 overflow-y-auto rounded-lg border p-6" style={{ backgroundColor: "var(--color-bg-card)", borderColor: "var(--color-border)" }}>
             <div className="space-y-6">
               {messages.map((m, i) => (
                 <MessageRow
@@ -1061,7 +1069,7 @@ function ChatPanel({
                 size="small"
                 icon={<SyncOutlined />}
                 onClick={() => setSuggestionSeed((s) => s + 1)}
-                style={{ color: "#7c3aed", fontSize: 12, padding: "0 4px" }}
+                style={{ color: "var(--color-info)", fontSize: 12, padding: "0 4px" }}
               >
                 换一批
               </Button>
@@ -1220,8 +1228,8 @@ function Composer({
         </div>
       )}
       <div
-        className="rounded-lg border bg-white"
-        style={{ borderColor: "#d9d9d9" }}
+        className="rounded-lg border"
+        style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-elevated)" }}
       >
       <Popover
         open={slashOpen}
@@ -1254,13 +1262,13 @@ function Composer({
                   style={{
                     border: "none",
                     background:
-                      idx === activeIdx ? "#f3e8ff" : "transparent",
+                      idx === activeIdx ? "color-mix(in srgb, var(--color-info) 15%, transparent)" : "transparent",
                     padding: "6px 10px",
                     cursor: "pointer",
                   }}
                 >
                   <div className="flex items-center gap-2">
-                    <ThunderboltOutlined style={{ color: "#7c3aed" }} />
+                    <ThunderboltOutlined style={{ color: "var(--color-info)" }} />
                     <span style={{ fontWeight: 500 }}>{s.name}</span>
                     {s.source === "builtin" && (
                       <Tag style={{ marginInlineEnd: 0, fontSize: 11 }}>内置</Tag>
@@ -1268,8 +1276,7 @@ function Composer({
                   </div>
                   {s.description && (
                     <div
-                      className="text-gray-500"
-                      style={{ fontSize: 12, marginTop: 2, paddingLeft: 20 }}
+                      style={{ fontSize: 12, marginTop: 2, paddingLeft: 20, color: "var(--color-text-secondary)" }}
                     >
                       {s.description}
                     </div>
@@ -1321,9 +1328,9 @@ function Composer({
             border: "none",
             cursor: "pointer",
             background: sending
-              ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-              : "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+              ? "linear-gradient(135deg, var(--color-error) 0%, #dc2626 100%)"
+              : "linear-gradient(135deg, var(--color-info) 0%, #4f46e5 100%)",
+            boxShadow: "0 2px 6px color-mix(in srgb, var(--color-text) 15%, transparent)",
           }}
         >
           {sending ? <StopOutlined style={{ fontSize: 16 }} /> : <SendOutlined style={{ fontSize: 16 }} />}
@@ -1398,7 +1405,7 @@ function MessageRow({
       return (
         <div className="flex gap-3 justify-end">
           <div className="max-w-[75%] w-full">
-            <div className="rounded-2xl rounded-tr-sm bg-white border border-blue-300 p-2">
+            <div className="rounded-2xl rounded-tr-sm border p-2" style={{ backgroundColor: "var(--color-bg-card)", borderColor: "var(--color-info)" }}>
               <TextArea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -1435,7 +1442,7 @@ function MessageRow({
     return (
       <div className="group flex gap-3 justify-end">
         <div className="max-w-[75%]">
-          <div className="rounded-2xl rounded-tr-sm bg-blue-500 text-white px-4 py-2">
+          <div className="rounded-2xl rounded-tr-sm text-white px-4 py-2" style={{ backgroundColor: "var(--color-info)" }}>
             <div className="whitespace-pre-wrap break-words">{message.content}</div>
           </div>
           <div className="flex items-center justify-end gap-2 mt-1 h-5">
@@ -1443,8 +1450,8 @@ function MessageRow({
               <Button
                 type="text"
                 size="small"
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-500"
-                style={{ fontSize: 12, padding: "0 4px" }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ fontSize: 12, padding: "0 4px", color: "var(--color-text-tertiary)" }}
                 icon={<EditOutlined />}
                 onClick={startEdit}
               >
@@ -1535,8 +1542,7 @@ function MessageRow({
                 <Button
                   type="text"
                   size="small"
-                  className="text-gray-400 hover:text-blue-500"
-                  style={{ fontSize: 12, padding: "0 4px" }}
+                  style={{ fontSize: 12, padding: "0 4px", color: "var(--color-text-tertiary)" }}
                   icon={copied ? <CheckOutlined /> : <CopyOutlined />}
                   onClick={handleCopy}
                 />
@@ -1546,8 +1552,7 @@ function MessageRow({
                   <Button
                     type="text"
                     size="small"
-                    className="text-gray-400 hover:text-blue-500"
-                    style={{ fontSize: 12, padding: "0 4px" }}
+                    style={{ fontSize: 12, padding: "0 4px", color: "var(--color-text-tertiary)" }}
                     icon={<RedoOutlined />}
                     onClick={onRegenerate}
                   />
@@ -1600,10 +1605,10 @@ function ErrorCard({
       title={
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-red-600 font-medium text-sm">AI 回复失败</div>
+            <div className="font-medium text-sm" style={{ color: "var(--color-error)" }}>AI 回复失败</div>
             <div
-              className="text-xs text-gray-600 mt-0.5 break-words whitespace-pre-wrap"
-              style={{ maxHeight: 120, overflow: "auto" }}
+              className="text-xs mt-0.5 break-words whitespace-pre-wrap"
+              style={{ maxHeight: 120, overflow: "auto", color: "var(--color-text-secondary)" }}
             >
               {error}
             </div>
@@ -1631,7 +1636,7 @@ function ErrorCard({
         </div>
       }
       description={
-        <div className="text-xs text-gray-400 mt-1">
+        <div className="text-xs mt-1" style={{ color: "var(--color-text-tertiary)" }}>
           <ClockCircleOutlined style={{ fontSize: 11, marginRight: 4 }} />
           {time}
         </div>
@@ -1655,9 +1660,10 @@ function MessageMeta({
 }) {
   return (
     <div
-      className={`flex items-center gap-2 flex-wrap text-xs text-gray-400 ${
+      className={`flex items-center gap-2 flex-wrap text-xs ${
         inline ? "" : "mt-1.5 "
       }${align === "right" ? "justify-end" : ""}`}
+      style={{ color: "var(--color-text-tertiary)" }}
     >
       <span className="inline-flex items-center gap-1">
         <ClockCircleOutlined style={{ fontSize: 11 }} />
@@ -1687,7 +1693,7 @@ function MessageMeta({
           </Text>
           {" · "}
           共{" "}
-          <Text strong style={{ fontSize: 12, color: "#722ed1" }}>
+          <Text strong style={{ fontSize: 12, color: "var(--color-info)" }}>
             {usage.totalTokens.toLocaleString()}
           </Text>{" "}
           tokens

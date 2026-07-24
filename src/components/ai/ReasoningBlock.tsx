@@ -40,11 +40,11 @@ export function ReasoningBlock({
   const charCount = reasoning.length;
   const header = (
     <span className="flex items-center gap-1.5">
-      <BulbOutlined className="text-amber-500" />
-      <span className="text-gray-500 font-normal">
+      <BulbOutlined style={{ color: "var(--color-warning)" }} />
+      <span className="font-normal" style={{ color: "var(--color-text-secondary)" }}>
         {streaming ? "正在思考…" : "思考过程"}
       </span>
-      <span className="text-gray-400 text-xs font-normal">
+      <span className="text-xs font-normal" style={{ color: "var(--color-text-tertiary)" }}>
         · {charCount > 1000 ? `${(charCount / 1000).toFixed(1)}k` : charCount} 字
       </span>
     </span>

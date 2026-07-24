@@ -53,7 +53,7 @@ export default function PieChart({ data, title, centerText, height = 300, curren
               position: "center",
               formatter: () => centerText,
               fontSize: 12,
-              color: "#666",
+              color: "var(--color-text-secondary)",
             }
           : { show: false },
         emphasis: {
