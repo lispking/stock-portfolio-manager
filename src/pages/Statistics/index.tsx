@@ -74,6 +74,9 @@ export default function StatisticsPage() {
     fetchAccounts();
     fetchCategories();
     fetchHoldings();
+    // Load holding quotes from cache so the OverviewTab's "个股明细" table
+    // can render merged positions with market values immediately.
+    fetchHoldingQuotes([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
