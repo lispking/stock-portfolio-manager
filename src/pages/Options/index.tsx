@@ -469,7 +469,7 @@ export default function OptionsPage() {
               value={activePremiumStats.total}
               prefix="$"
               precision={0}
-              styles={{ content: {  color: "#3f8600"  } }}
+              styles={{ content: {  color: "var(--color-success)"  } }}
             />
           </Card>
         </Col>
@@ -480,7 +480,7 @@ export default function OptionsPage() {
               value={activePremiumStats.last90}
               prefix="$"
               precision={0}
-              styles={{ content: {  color: "#3f8600"  } }}
+              styles={{ content: {  color: "var(--color-success)"  } }}
             />
           </Card>
         </Col>
@@ -491,7 +491,7 @@ export default function OptionsPage() {
               value={activePremiumStats.last60}
               prefix="$"
               precision={0}
-              styles={{ content: {  color: "#3f8600"  } }}
+              styles={{ content: {  color: "var(--color-success)"  } }}
             />
           </Card>
         </Col>
@@ -502,7 +502,7 @@ export default function OptionsPage() {
               value={activePremiumStats.last30}
               prefix="$"
               precision={0}
-              styles={{ content: {  color: "#3f8600"  } }}
+              styles={{ content: {  color: "var(--color-success)"  } }}
             />
           </Card>
         </Col>
@@ -538,7 +538,7 @@ export default function OptionsPage() {
                 <Card size="small" styles={{ body: { padding: "10px 16px" } }}>
                   <Space>
                     <Text strong>{item.underlying}</Text>
-                    <Text strong style={{ color: "#3f8600" }}>
+                    <Text strong style={{ color: "var(--color-success)" }}>
                       ${item.premium.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </Text>
                   </Space>
@@ -730,7 +730,7 @@ export default function OptionsPage() {
                 value={expiredTotalPremium}
                 prefix="$"
                 precision={0}
-                styles={{ content: {  color: "#3f8600"  } }}
+                styles={{ content: {  color: "var(--color-success)"  } }}
               />
             </Card>
           </Col>
@@ -744,7 +744,7 @@ export default function OptionsPage() {
               <Statistic
                 title="被执行合约"
                 value={expiredStats.assigned_contracts}
-                styles={{ content: {  color: "#cf1322"  } }}
+                styles={{ content: {  color: "var(--color-error)"  } }}
               />
             </Card>
           </Col>
@@ -753,7 +753,7 @@ export default function OptionsPage() {
               <Statistic
                 title="到期作废合约"
                 value={expiredStats.expired_contracts}
-                styles={{ content: {  color: "#3f8600"  } }}
+                styles={{ content: {  color: "var(--color-success)"  } }}
               />
             </Card>
           </Col>
@@ -798,7 +798,7 @@ export default function OptionsPage() {
                 <Card size="small" styles={{ body: { padding: "10px 16px" } }}>
                   <Space>
                     <Text strong>{item.underlying}</Text>
-                    <Text strong style={{ color: "#3f8600" }}>
+                    <Text strong style={{ color: "var(--color-success)" }}>
                       ${item.premium.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </Text>
                   </Space>

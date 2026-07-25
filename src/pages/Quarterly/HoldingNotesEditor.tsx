@@ -173,7 +173,7 @@ export default function HoldingNotesEditor({
                 label: h.quarter,
                 children: (
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">
+                    <div className="text-xs mb-1" style={{ color: "var(--color-text-secondary)" }}>
                       {h.snapshot_date} | 持股: {h.shares} | 成本: {h.avg_cost.toFixed(4)} |
                       收盘: {h.close_price.toFixed(4)} |{" "}
                       <span style={{ color: h.pnl_percent != null ? pnlColorDark(h.pnl_percent) : undefined }}>

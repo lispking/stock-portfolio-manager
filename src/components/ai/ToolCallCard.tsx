@@ -493,20 +493,20 @@ function StatusBadge({ status }: { status: ToolCallInfo["status"] }) {
   if (status === "running") {
     return (
       <Tooltip title="执行中">
-        <LoadingOutlined className="text-blue-500" />
+        <LoadingOutlined style={{ color: "var(--color-info)" }} />
       </Tooltip>
     );
   }
   if (status === "success") {
     return (
       <Tooltip title="成功">
-        <CheckCircleFilled className="text-green-500" />
+        <CheckCircleFilled style={{ color: "var(--color-success)" }} />
       </Tooltip>
     );
   }
   return (
     <Tooltip title="失败">
-      <CloseCircleFilled className="text-red-500" />
+      <CloseCircleFilled style={{ color: "var(--color-error)" }} />
     </Tooltip>
   );
 }
@@ -549,11 +549,11 @@ export function ToolCallCard({ tool }: { tool: ToolCallInfo }) {
             key: "1",
             label: (
               <div className="flex items-center gap-2 w-full min-w-0">
-                <span className="text-gray-500 flex-shrink-0">{toolIcon(tool.name)}</span>
-                <span className="text-gray-700 truncate">{label}</span>
+                <span className="flex-shrink-0" style={{ color: "var(--color-text-secondary)" }}>{toolIcon(tool.name)}</span>
+                <span className="truncate" style={{ color: "var(--color-text)" }}>{label}</span>
                 <span className="flex-shrink-0 ml-auto flex items-center gap-2">
                   {durationLabel && (
-                    <span className="text-gray-400 text-xs">{durationLabel}</span>
+                    <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>{durationLabel}</span>
                   )}
                   <StatusBadge status={tool.status} />
                 </span>
@@ -562,24 +562,24 @@ export function ToolCallCard({ tool }: { tool: ToolCallInfo }) {
             children: (
               <div className="space-y-2">
                 {tool.status === "error" && tool.error ? (
-                  <div className="text-red-600 text-sm whitespace-pre-wrap break-words">
+                  <div className="text-sm whitespace-pre-wrap break-words" style={{ color: "var(--color-error)" }}>
                     {tool.error}
                   </div>
                 ) : null}
                 {argsPretty && (
                   <div>
-                    <div className="text-gray-400 text-xs mb-0.5">入参</div>
+                    <div className="text-xs mb-0.5" style={{ color: "var(--color-text-tertiary)" }}>入参</div>
                     <pre className="ai-tool-card-code">{argsPretty}</pre>
                   </div>
                 )}
                 {tool.status === "running" && !resultPretty && (
-                  <div className="text-gray-400 text-sm flex items-center gap-1.5">
+                  <div className="text-sm flex items-center gap-1.5" style={{ color: "var(--color-text-tertiary)" }}>
                     <LoadingOutlined /> 正在执行…
                   </div>
                 )}
                 {resultPretty && (
                   <div>
-                    <div className="text-gray-400 text-xs mb-0.5">返回结果</div>
+                    <div className="text-xs mb-0.5" style={{ color: "var(--color-text-tertiary)" }}>返回结果</div>
                     <ToolResultView name={tool.name} resultJson={tool.result ?? ""} />
                   </div>
                 )}

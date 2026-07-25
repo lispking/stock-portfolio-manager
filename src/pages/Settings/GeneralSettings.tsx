@@ -3,7 +3,7 @@ import { Button, Card, Checkbox, Form, Input, Modal, Radio, Select, Space, Tabs,
 import { invoke } from "@tauri-apps/api/core";
 import { useExchangeRateStore } from "../../stores/exchangeRateStore";
 import { useQuoteStore } from "../../stores/quoteStore";
-import { useSettingsStore, type ColorScheme } from "../../stores/settingsStore";
+import { useSettingsStore, type ColorScheme, type ThemeMode } from "../../stores/settingsStore";
 import { useXueqiuLogin } from "../../hooks/useXueqiuLogin";
 import type { QuoteProviderConfig } from "../../types";
 
@@ -34,6 +34,12 @@ const COLOR_SCHEME_OPTIONS: { value: ColorScheme; label: string }[] = [
   { value: "green-up", label: "绿涨红跌（美股风格）" },
 ];
 
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: string }[] = [
+  { value: "light", label: "浅色模式", icon: "☀️" },
+  { value: "dark", label: "深色模式", icon: "🌙" },
+  { value: "system", label: "跟随系统", icon: "💻" },
+];
+
 // The default quote provider config, matching the Rust
 // `impl Default for QuoteProviderConfig`. Used to reset the local UI state
 // after a factory reset so the form doesn't briefly show stale values.
@@ -52,6 +58,7 @@ const DEFAULT_PROVIDER_CONFIG: QuoteProviderConfig = {
 // state — everything else lives in the Tauri SQLite backend).
 const LOCAL_STORAGE_KEYS = [
   "pnl_color_scheme",
+  "app_theme_mode",
   "quote_refresh_interval_ms",
   "base_currency",
   "statistics_selected_market",
@@ -60,7 +67,7 @@ const LOCAL_STORAGE_KEYS = [
 
 export default function GeneralSettings() {
   const { refreshIntervalMs, setRefreshInterval } = useQuoteStore();
-  const { colorScheme, setColorScheme } = useSettingsStore();
+  const { colorScheme, setColorScheme, themeMode, setThemeMode } = useSettingsStore();
   const { setBaseCurrency } = useExchangeRateStore();
   const [providerConfig, setProviderConfig] = useState<QuoteProviderConfig>({
     us_provider: "xueqiu",
@@ -223,6 +230,7 @@ export default function GeneralSettings() {
       // 3. Push those defaults into the in-memory stores so the UI updates
       //    immediately, even before the full-page reload below.
       setColorScheme("red-up");
+      setThemeMode("system");
       setRefreshInterval(5 * 60_000);
       setBaseCurrency("USD");
       setProviderConfig(DEFAULT_PROVIDER_CONFIG);
@@ -394,6 +402,29 @@ export default function GeneralSettings() {
         </Paragraph>
       </Card>
 
+      <Card title="外观设置">
+        <Form layout="vertical" style={{ maxWidth: 400 }}>
+          <Form.Item label="主题模式">
+            <Radio.Group
+              value={themeMode}
+              onChange={(e) => {
+                setThemeMode(e.target.value);
+                message.success("主题模式已更新");
+              }}
+            >
+              {THEME_OPTIONS.map((opt) => (
+                <Radio.Button key={opt.value} value={opt.value}>
+                  {opt.icon} {opt.label}
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+          </Form.Item>
+        </Form>
+        <Paragraph type="secondary">
+          选择应用的外观主题。跟随系统模式会根据操作系统的设置自动切换深色或浅色主题。
+        </Paragraph>
+      </Card>
+
       <Card title="盈亏配色">
         <Form layout="vertical" style={{ maxWidth: 400 }}>
           <Form.Item label="盈亏颜色方案">
@@ -458,9 +489,9 @@ export default function GeneralSettings() {
       </Card>
 
       <Card
-        title={<span style={{ color: "#cf1322" }}>⚠️ 危险操作</span>}
-        styles={{ header: { borderBottomColor: "#ffd6cc" } }}
-        style={{ borderColor: "#ffa39e" }}
+        title={<span style={{ color: "var(--color-error)" }}>⚠️ 危险操作</span>}
+        styles={{ header: { borderBottomColor: "color-mix(in srgb, var(--color-error) 20%, transparent)" } }}
+        style={{ borderColor: "color-mix(in srgb, var(--color-error) 40%, transparent)" }}
       >
         <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
           <Typography.Paragraph style={{ marginBottom: 0 }}>

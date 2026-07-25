@@ -1,5 +1,46 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────────
+ * Theme CSS Variables
+ *
+ * Semantic color tokens that adapt to light/dark theme.
+ * Use these in components instead of hardcoded hex values.
+ * ───────────────────────────────────────────────────────────────────── */
+:root,
+[data-theme="light"] {
+  --color-success: #52c41a;
+  --color-success-hover: #73d13d;
+  --color-error: #ff4d4f;
+  --color-error-hover: #ff7875;
+  --color-warning: #faad14;
+  --color-warning-hover: #ffc53d;
+  --color-info: #1677ff;
+  --color-text: #1f2329;
+  --color-text-secondary: #666;
+  --color-text-tertiary: #999;
+  --color-border: #d9d9d9;
+  --color-bg-elevated: white;
+  --color-bg-card: #ffffff;
+  --color-bg-layout: #f5f5f5;
+}
+
+[data-theme="dark"] {
+  --color-success: #73d13d;
+  --color-success-hover: #95de64;
+  --color-error: #ff7875;
+  --color-error-hover: #ffa39e;
+  --color-warning: #ffc53d;
+  --color-warning-hover: #ffd666;
+  --color-info: #4096ff;
+  --color-text: #e8e8e8;
+  --color-text-secondary: #a6a6a6;
+  --color-text-tertiary: #8c8c8c;
+  --color-border: #424242;
+  --color-bg-elevated: #1f1f1f;
+  --color-bg-card: #262626;
+  --color-bg-layout: #141414;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -26,7 +67,7 @@ body {
 .ai-chat-md {
   font-size: 14px;
   line-height: 1.7;
-  color: #1f2329;
+  color: var(--color-text);
   word-break: break-word;
 }
 
@@ -48,7 +89,7 @@ body {
   margin: 20px 0 10px;
   font-weight: 600;
   line-height: 1.35;
-  color: #1f2329;
+  color: var(--color-text);
 }
 .ai-chat-md h1 {
   font-size: 20px;
@@ -76,7 +117,7 @@ body {
 }
 
 .ai-chat-md a {
-  color: #1677ff;
+  color: var(--color-info);
   text-decoration: none;
 }
 .ai-chat-md a:hover {
@@ -86,9 +127,9 @@ body {
 .ai-chat-md blockquote {
   margin: 0 0 12px;
   padding: 4px 14px;
-  border-left: 3px solid #d9d9d9;
-  color: #595959;
-  background: #fafafa;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
   border-radius: 0 4px 4px 0;
 }
 .ai-chat-md blockquote > p {
@@ -100,7 +141,7 @@ body {
   padding: 1px 6px;
   font-size: 13px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  background: rgba(0, 0, 0, 0.05);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
   border-radius: 4px;
 }
 
@@ -207,24 +248,24 @@ body {
   font-size: 13px;
   overflow: hidden;
   border-radius: 6px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border);
 }
 .ai-chat-md thead {
-  background: #f5f5f5;
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
 }
 .ai-chat-md th,
 .ai-chat-md td {
   padding: 7px 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-border);
   text-align: left;
   vertical-align: top;
 }
 .ai-chat-md th {
   font-weight: 600;
-  color: #1f2329;
+  color: var(--color-text);
 }
 .ai-chat-md tbody tr:nth-child(even) {
-  background: #fafbfc;
+  background: color-mix(in srgb, var(--color-text) 3%, transparent);
 }
 .ai-chat-md tbody tr:last-child td {
   border-bottom: none;
@@ -233,7 +274,7 @@ body {
 .ai-chat-md hr {
   margin: 16px 0;
   border: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-border);
 }
 
 /* Strong / emphasis inherit weight from the base font rather than fighting
@@ -250,8 +291,8 @@ body {
  * the answer: amber accent, soft background, monospace-ish spacing.
  * ───────────────────────────────────────────────────────────────────── */
 .ai-reasoning-collapse {
-  border: 1px solid #fde68a !important;
-  background: #fffbeb !important;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent) !important;
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent) !important;
   border-radius: 6px !important;
 }
 .ai-reasoning-collapse .ant-collapse-header {
@@ -260,14 +301,106 @@ body {
 }
 .ai-reasoning-collapse .ant-collapse-content-box {
   padding: 8px 12px !important;
-  background: #fffdf5;
+  background: color-mix(in srgb, var(--color-warning) 5%, transparent);
 }
 .ai-reasoning-body {
   font-size: 13px;
   line-height: 1.6;
-  color: #78716c;
+  color: var(--color-text-secondary);
   max-height: 320px;
   overflow-y: auto;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * Dark theme support
+ *
+ * When the Ant Design dark algorithm is active, these overrides ensure
+ * custom components (AI chat, reasoning blocks, tool cards) adapt to the
+ * dark background.
+ * ───────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .ai-chat-md {
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .ai-chat-md h1,
+[data-theme="dark"] .ai-chat-md h2,
+[data-theme="dark"] .ai-chat-md h3,
+[data-theme="dark"] .ai-chat-md h4 {
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .ai-chat-md a {
+  color: #60a5fa;
+}
+
+[data-theme="dark"] .ai-chat-md blockquote {
+  border-left-color: #475569;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .ai-chat-md code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .ai-chat-md table {
+  border-color: #334155;
+}
+
+[data-theme="dark"] .ai-chat-md thead {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .ai-chat-md th,
+[data-theme="dark"] .ai-chat-md td {
+  border-bottom-color: #334155;
+}
+
+[data-theme="dark"] .ai-chat-md th {
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .ai-chat-md tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="dark"] .ai-chat-md hr {
+  border-top-color: #334155;
+}
+
+[data-theme="dark"] .ai-reasoning-collapse {
+  border-color: #854d0e !important;
+  background: rgba(120, 53, 15, 0.2) !important;
+}
+
+[data-theme="dark"] .ai-reasoning-collapse .ant-collapse-content-box {
+  background: rgba(120, 53, 15, 0.1) !important;
+}
+
+[data-theme="dark"] .ai-reasoning-body {
+  color: #a8a29e;
+}
+
+[data-theme="dark"] .ai-tool-card-collapse {
+  border-color: #334155 !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+[data-theme="dark"] .ai-tool-card-collapse .ant-collapse-content-box {
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .ai-tool-field-label {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .ai-tool-field-value {
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .ai-tool-field-group {
+  color: #64748b;
+  border-top-color: #334155;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -281,8 +414,8 @@ body {
   max-width: 100%;
 }
 .ai-tool-card-collapse {
-  border: 1px solid #e5e7eb !important;
-  background: #fafafa !important;
+  border: 1px solid var(--color-border) !important;
+  background: color-mix(in srgb, var(--color-text) 5%, transparent) !important;
   border-radius: 6px !important;
 }
 .ai-tool-card-collapse .ant-collapse-header {
@@ -291,7 +424,7 @@ body {
 }
 .ai-tool-card-collapse .ant-collapse-content-box {
   padding: 8px 12px !important;
-  background: #fff;
+  background: var(--color-bg-elevated);
 }
 .ai-tool-card-code {
   margin: 0;
@@ -322,20 +455,20 @@ body {
   line-height: 1.7;
 }
 .ai-tool-field-label {
-  color: #6b7280;
+  color: var(--color-text-tertiary);
   flex-shrink: 0;
   min-width: 108px;
 }
 .ai-tool-field-value {
-  color: #1f2937;
+  color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 .ai-tool-field-group {
-  color: #9ca3af;
+  color: var(--color-text-tertiary);
   font-size: 11px;
   margin-top: 6px;
   margin-bottom: 1px;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--color-border);
   padding-top: 4px;
 }
 .ai-tool-field-group:first-child {
@@ -347,7 +480,7 @@ body {
   margin-top: 4px;
 }
 .ai-tool-note {
-  color: #6b7280;
+  color: var(--color-text-tertiary);
   font-size: 12.5px;
 }
 

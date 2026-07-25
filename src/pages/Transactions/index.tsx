@@ -299,7 +299,7 @@ export default function TransactionsPage() {
         <Space>
           <Tag color={marketColors[record.market]}>{record.market}</Tag>
           <strong>{record.symbol}</strong>
-          <span className="text-gray-500 text-sm">{record.name}</span>
+          <span className="text-sm" style={{ color: "var(--color-text-secondary)" }}>{record.name}</span>
         </Space>
       ),
     },

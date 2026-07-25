@@ -37,7 +37,7 @@ export default function NotesTimeline() {
             ),
             children: (
               <Card size="small" className="mb-2">
-                <div className="flex gap-4 mb-2 text-sm text-gray-500">
+                <div className="flex gap-4 mb-2 text-sm" style={{ color: "var(--color-text-secondary)" }}>
                   <span>总市值: ${fmt(n.total_value)}</span>
                   <span style={{ color: pnlColorDark(n.total_pnl) }}>
                     盈亏: {n.total_pnl >= 0 ? "+" : ""}${fmt(n.total_pnl)}

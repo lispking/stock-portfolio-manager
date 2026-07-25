@@ -149,14 +149,14 @@ export default function ReviewPage() {
               <Statistic
                 title="正确决策"
                 value={decisionStats.correct_count}
-                styles={{ content: {  color: "#52c41a"  } }}
+                styles={{ content: {  color: "var(--color-success)"  } }}
               />
             </Col>
             <Col span={6}>
               <Statistic
                 title="错误决策"
                 value={decisionStats.wrong_count}
-                styles={{ content: {  color: "#ff4d4f"  } }}
+                styles={{ content: {  color: "var(--color-error)"  } }}
               />
             </Col>
             <Col span={6}>
@@ -201,13 +201,19 @@ export default function ReviewPage() {
             {reviewedSymbols.map(([sym, name, market]) => (
               <div
                 key={sym}
-                className="cursor-pointer p-2 rounded hover:bg-gray-100"
+                className="cursor-pointer p-2 rounded"
                 style={{
-                  background: selectedSymbol === sym ? "#e6f7ff" : undefined,
+                  backgroundColor: selectedSymbol === sym ? "color-mix(in srgb, var(--color-info) 15%, transparent)" : "transparent",
                   borderLeft:
-                    selectedSymbol === sym ? "3px solid #1890ff" : "3px solid transparent",
+                    selectedSymbol === sym ? "3px solid var(--color-info)" : "3px solid transparent",
                 }}
                 onClick={() => handleSelectSymbol(sym)}
+                onMouseEnter={(e) => {
+                  if (selectedSymbol !== sym) e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--color-text) 8%, transparent)";
+                }}
+                onMouseLeave={(e) => {
+                  if (selectedSymbol !== sym) e.currentTarget.style.backgroundColor = "transparent";
+                }}
               >
                 <Space>
                   <Text strong>{sym}</Text>

@@ -459,11 +459,11 @@ export default function ImportFromImageModal({
       key: "status",
       width: 40,
       render: (_: unknown, record: EditableRow) => {
-        if (record.importOk) return <CheckCircleOutlined style={{ color: "#52c41a" }} />;
+        if (record.importOk) return <CheckCircleOutlined style={{ color: "var(--color-success)" }} />;
         if (record.importError)
           return (
             <CloseCircleOutlined
-              style={{ color: "#ff4d4f" }}
+              style={{ color: "var(--color-error)" }}
               title={record.importError}
             />
           );
