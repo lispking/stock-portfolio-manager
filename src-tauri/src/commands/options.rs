@@ -39,16 +39,30 @@ fn parse_option_symbol(symbol: &str) -> Result<(String, String, f64, String), St
 
 /// Import option records from CSV content.
 /// CSV columns: 账户, 股票, 交易时间, 交割时间, 交易所, 操作, 股票数量, 价格, 金额, 佣金, 费用, 类型, 代码
+/// English (IBKR-style) equivalents are also accepted:
+/// Acct ID, Symbol, Trade Date/Time, Settle Date, Exchange, Type, Quantity,
+/// Price, Proceeds, Comm, Fee, Order Type, Code.
+/// Header matching is case-insensitive.
 #[tauri::command(rename_all = "camelCase")]
 pub fn import_options_csv(
     db: State<Database>,
     account_id: String,
     csv_content: String,
 ) -> Result<ImportOptionsResult, String> {
+    import_options_csv_inner(&db, &account_id, &csv_content)
+}
+
+/// Internal helper without the tauri::State wrapper (testable directly).
+/// See `import_options_csv` for the CSV format.
+fn import_options_csv_inner(
+    db: &Database,
+    account_id: &str,
+    csv_content: &str,
+) -> Result<ImportOptionsResult, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     // Strip UTF-8 BOM if present
-    let content = csv_content.strip_prefix('\u{feff}').unwrap_or(&csv_content);
+    let content = csv_content.strip_prefix('\u{feff}').unwrap_or(csv_content);
 
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -118,7 +132,7 @@ pub fn import_options_csv(
         let action_raw = get_field(
             &record,
             &headers,
-            &["操作", "买/卖", "买卖", "action", "Action"],
+            &["操作", "买/卖", "买卖", "action", "Action", "Type"],
         )
         .unwrap_or_default();
         let action = normalize_action(&action_raw);
@@ -154,13 +168,14 @@ pub fn import_options_csv(
             .parse()
             .unwrap_or(0.0);
 
-        let amount: f64 = get_field(&record, &headers, &["金额", "amount", "Amount"])
+        let amount: f64 = get_field(&record, &headers, &["金额", "amount", "Amount", "Proceeds"])
             .unwrap_or_default()
             .replace(',', "")
             .parse()
             .unwrap_or(0.0);
 
-        let commission: f64 = get_field(&record, &headers, &["佣金", "commission", "Commission"])
+        let commission: f64 =
+            get_field(&record, &headers, &["佣金", "commission", "Commission", "Comm"])
             .unwrap_or_default()
             .replace(',', "")
             .parse()
@@ -172,7 +187,11 @@ pub fn import_options_csv(
             .parse()
             .unwrap_or(0.0);
 
-        let traded_at = get_field(&record, &headers, &["交易时间", "traded_at", "Trade Date"]);
+        let traded_at = get_field(
+            &record,
+            &headers,
+            &["交易时间", "traded_at", "Trade Date", "Trade Date/Time", "Date/Time"],
+        );
         let settled_at = get_field(
             &record,
             &headers,
@@ -220,7 +239,7 @@ pub fn import_options_csv(
     // Recompute contract statuses after import
     drop(conn); // release lock before recompute
     if imported > 0 {
-        let _ = recompute_option_statuses(&db, &account_id);
+        let _ = recompute_option_statuses(db, account_id);
     }
 
     Ok(ImportOptionsResult {
@@ -913,7 +932,7 @@ pub fn parse_options_csv(
         let action_raw = get_field(
             &record,
             &headers,
-            &["操作", "买/卖", "买卖", "action", "Action"],
+            &["操作", "买/卖", "买卖", "action", "Action", "Type"],
         )
         .unwrap_or_default();
         let action = normalize_action(&action_raw);
@@ -961,22 +980,16 @@ pub struct ImportOptionsResult {
 }
 
 /// Normalize action value to "SELL" or "BUY", supporting Chinese and English variants
+/// ("卖"/"卖出", "SELL", "SELL TO OPEN", "Buy to Close", ...)
 fn normalize_action(raw: &str) -> String {
     let s = raw.trim().to_uppercase();
-    match s.as_str() {
-        "SELL" | "卖" | "卖出" | "卖开" | "卖平" => "SELL".to_string(),
-        "BUY" | "买" | "买入" | "买开" | "买平" => "BUY".to_string(),
-        _ => {
-            // Check if the raw value contains Chinese sell/buy characters
-            let raw_trimmed = raw.trim();
-            if raw_trimmed.contains('卖') {
-                "SELL".to_string()
-            } else if raw_trimmed.contains('买') {
-                "BUY".to_string()
-            } else {
-                String::new()
-            }
-        }
+    // English: "BUY", "BUY TO OPEN", "BUY TO CLOSE", ... and Chinese variants
+    if s.starts_with("BUY") || raw.trim().contains('买') {
+        "BUY".to_string()
+    } else if s.starts_with("SELL") || raw.trim().contains('卖') {
+        "SELL".to_string()
+    } else {
+        String::new()
     }
 }
 
@@ -1023,14 +1036,18 @@ fn parse_expiry_to_sortable(expiry: &str) -> String {
     format!("{}-{}-{}", year, month, day)
 }
 
-/// Helper to get field by trying multiple header names
+/// Helper to get field by trying multiple header names (case-insensitive)
 fn get_field(
     record: &csv::StringRecord,
     headers: &csv::StringRecord,
     names: &[&str],
 ) -> Option<String> {
     for name in names {
-        if let Some(idx) = headers.iter().position(|h| h.trim() == *name) {
+        let expected = name.to_lowercase();
+        if let Some(idx) = headers
+            .iter()
+            .position(|h| h.trim().to_lowercase() == expected)
+        {
             if let Some(val) = record.get(idx) {
                 let trimmed = val.trim().to_string();
                 if !trimmed.is_empty() {
@@ -1203,4 +1220,102 @@ pub fn get_option_contracts_inner(
     });
 
     Ok(contracts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    /// Build an in-memory DB with one US account.
+    fn db_with_account() -> (Database, String) {
+        let db = Database::new(":memory:").expect("failed to create in-memory database");
+        let account_id = "acct-test".to_string();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO accounts (id, name, market, created_at, updated_at)
+                 VALUES (?1, ?2, 'US', ?3, ?3)",
+                rusqlite::params![
+                    account_id,
+                    "Test Account",
+                    chrono::Utc::now().to_rfc3339()
+                ],
+            )
+            .expect("failed to insert account");
+        }
+        (db, account_id)
+    }
+
+    /// A sample IBKR-style English-header options trade CSV.
+    const ENGLISH_CSV: &str = "\
+Acct ID,Symbol,Trade Date/Time,Settle Date,Exchange,Type,Quantity,Price,Proceeds,Comm,Fee,Order Type,Code
+U1234567,AAPL 20FEB26 100 P,2026-01-15 10:30:00,2026-01-16,SMART,SELL,2,3.50,700,1.20,0.05,LMT,O
+U1234567,AAPL 20FEB26 100 P,2026-01-15 10:30:00,2026-01-16,SMART,SELL,1,3.50,350,1.20,0.05,LMT,O
+U1234567,PDD 20MAR26 80 C,2026-02-20 09:45:00,2026-02-21,SMART,BUY TO CLOSE,3,2.00,600,0.90,0.04,MKT,C;P
+Total, ,,,,,,,,,,,
+";
+
+    #[test]
+    fn test_import_english_header_csv() {
+        let (db, account_id) = db_with_account();
+        let result =
+            import_options_csv_inner(&db, &account_id, ENGLISH_CSV).expect("import should succeed");
+        assert_eq!(result.imported, 3, "all 3 trade rows should import");
+        assert_eq!(result.skipped, 1, "the Total row should be skipped");
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors, got: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn test_parse_english_header_csv_preview() {
+        let preview =
+            parse_options_csv(ENGLISH_CSV.to_string()).expect("preview should succeed");
+        assert_eq!(preview.valid_rows, 3);
+        assert!(
+            preview.error_rows.is_empty(),
+            "expected no errors, got: {:?}",
+            preview.error_rows
+        );
+    }
+
+    #[test]
+    fn test_normalize_action_english_variants() {
+        assert_eq!(normalize_action("SELL"), "SELL");
+        assert_eq!(normalize_action("SELL TO OPEN"), "SELL");
+        assert_eq!(normalize_action("Buy to Close"), "BUY");
+        assert_eq!(normalize_action("buy"), "BUY");
+        assert_eq!(normalize_action("卖出开仓"), "SELL");
+        assert_eq!(normalize_action("买入平仓"), "BUY");
+        assert_eq!(normalize_action("unknown"), "");
+    }
+
+    #[test]
+    fn test_get_field_case_insensitive() {
+        let headers = csv::StringRecord::from(vec![
+            "SYMBOL".to_string(),
+            "Quantity".to_string(),
+            "Trade Date/Time".to_string(),
+        ]);
+        let record = csv::StringRecord::from(vec![
+            "AAPL 20FEB26 100 P".to_string(),
+            "2".to_string(),
+            "2026-01-15 10:30:00".to_string(),
+        ]);
+        assert_eq!(
+            get_field(&record, &headers, &["Symbol"]).as_deref(),
+            Some("AAPL 20FEB26 100 P")
+        );
+        assert_eq!(
+            get_field(&record, &headers, &["quantity"]).as_deref(),
+            Some("2")
+        );
+        assert_eq!(
+            get_field(&record, &headers, &["trade date/time"]).as_deref(),
+            Some("2026-01-15 10:30:00")
+        );
+    }
 }
