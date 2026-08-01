@@ -84,9 +84,10 @@ pub async fn get_holding_quotes(
             .map_err(|e| e.to_string())?;
 
         // For cleared (shares == 0) non-cash holdings, compute realized PnL from transactions:
-        //   realized_pnl = SUM(SELL total_amount - commission) - SUM(BUY total_amount + commission)
-        //   total_buy_cost = SUM(BUY total_amount + commission)  [used for % calculation]
-        // OPEN transactions are excluded (no cash impact).
+        //   realized_pnl = SUM(SELL total_amount - commission) - SUM((BUY|OPEN) total_amount + commission)
+        //   total_buy_cost = SUM((BUY|OPEN) total_amount + commission)  [used for % calculation]
+        // OPEN transactions are position-entry records (create_holding / backfill)
+        // with no cash impact, but their total_amount is the position's cost basis.
         let is_cleared_position = |h: &crate::models::Holding| -> bool {
             h.shares == 0.0 && !h.symbol.starts_with(CASH_SYMBOL_PREFIX)
         };
@@ -94,21 +95,7 @@ pub async fn get_holding_quotes(
             std::collections::HashMap::new();
         for h in &holdings {
             if is_cleared_position(h) {
-                let pnl_data: (f64, f64) = match conn.query_row(
-                    "SELECT
-                            COALESCE(SUM(CASE
-                                WHEN transaction_type = 'SELL' THEN total_amount - commission
-                                WHEN transaction_type = 'BUY'  THEN -(total_amount + commission)
-                                ELSE 0
-                            END), 0.0),
-                            COALESCE(SUM(CASE
-                                WHEN transaction_type = 'BUY' THEN total_amount + commission
-                                ELSE 0
-                            END), 0.0)
-                         FROM transactions WHERE holding_id = ?1",
-                    rusqlite::params![h.id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                ) {
+                let pnl_data: (f64, f64) = match compute_realized_pnl(&conn, &h.id) {
                     Ok(data) => data,
                     Err(e) => {
                         warn!("Failed to compute realized PnL for holding {}: {}", h.id, e);
@@ -247,6 +234,34 @@ pub async fn get_holding_quotes(
     Ok(result)
 }
 
+/// Compute realized PnL for a cleared (shares == 0) position from its
+/// transaction history.
+///   realized_pnl = SUM(SELL total_amount - commission) - SUM((BUY|OPEN) total_amount + commission)
+///   total_buy_cost = SUM((BUY|OPEN) total_amount + commission)  [used for % calculation]
+/// OPEN transactions are position-entry records (create_holding / backfill)
+/// with no cash impact, but their total_amount is the position's cost basis
+/// and must count toward realized PnL.
+fn compute_realized_pnl(
+    conn: &rusqlite::Connection,
+    holding_id: &str,
+) -> Result<(f64, f64), rusqlite::Error> {
+    conn.query_row(
+        "SELECT
+                COALESCE(SUM(CASE
+                    WHEN transaction_type = 'SELL' THEN total_amount - commission
+                    WHEN transaction_type IN ('BUY', 'OPEN') THEN -(total_amount + commission)
+                    ELSE 0
+                END), 0.0),
+                COALESCE(SUM(CASE
+                    WHEN transaction_type IN ('BUY', 'OPEN') THEN total_amount + commission
+                    ELSE 0
+                END), 0.0)
+             FROM transactions WHERE holding_id = ?1",
+        rusqlite::params![holding_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+}
+
 #[tauri::command]
 pub fn take_quote_warning() -> Option<String> {
     crate::services::quote_service::take_quote_warning()
@@ -318,4 +333,140 @@ pub async fn get_cn_quote(
 #[tauri::command(rename_all = "camelCase")]
 pub fn get_last_quote_refresh_time(db: State<'_, Database>) -> Result<Option<String>, String> {
     get_quote_refresh_time(&db)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    fn now() -> String {
+        chrono::Utc::now().to_rfc3339()
+    }
+
+    /// Build an in-memory DB with one account and a cleared 410.HK position:
+    /// an OPEN backfill entry (930,000 shares @ 2.74) fully sold at ~0.35.
+    /// Mirrors the user-reported scenario (SOHO中国).
+    fn db_with_cleared_position() -> (Database, String) {
+        let db = Database::new(":memory:").expect("failed to create in-memory database");
+        let holding_id = "h-410hk".to_string();
+        let ts = now();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO accounts (id, name, market, created_at, updated_at)
+                 VALUES ('a', 'Test', 'HK', ?1, ?1)",
+                rusqlite::params![ts],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO holdings (id, account_id, symbol, name, market, category_id,
+                        shares, avg_cost, currency, created_at, updated_at)
+                 VALUES (?1, 'a', '410.HK', 'SOHO中国', 'HK', NULL,
+                         0.0, 2.74, 'HKD', ?2, ?2)",
+                rusqlite::params![holding_id, ts],
+            )
+            .unwrap();
+            // OPEN initial position entry (backfill) — 930,000 @ 2.74
+            conn.execute(
+                "INSERT INTO transactions (id, holding_id, account_id, symbol, name, market,
+                        transaction_type, shares, price, total_amount, commission, currency,
+                        traded_at, notes, created_at)
+                 VALUES ('t-open', ?1, 'a', '410.HK', 'SOHO中国', 'HK',
+                         'OPEN', 930000.0, 2.74, 2548200.0, 0.0, 'HKD',
+                         '2026-03-15', 'backfill:initial', ?2)",
+                rusqlite::params![holding_id, ts],
+            )
+            .unwrap();
+            // SELLs — 200k + 200k + 500 + 200k + 130k + 199.5k @ ~0.35
+            let sells: [(&str, f64, f64, f64, f64); 6] = [
+                ("t-s1", 200000.0, 0.35, 71000.00, 115.51),
+                ("t-s2", 200000.0, 0.35, 71000.00, 115.51),
+                ("t-s3", 500.0, 0.36, 182.50, 19.03),
+                ("t-s4", 200000.0, 0.35, 71000.00, 115.51),
+                ("t-s5", 130000.0, 0.35, 46150.00, 75.94),
+                ("t-s6", 199500.0, 0.35, 70822.50, 116.41),
+            ];
+            for (i, (id, shares, price, amount, comm)) in sells.iter().enumerate() {
+                conn.execute(
+                    "INSERT INTO transactions (id, holding_id, account_id, symbol, name, market,
+                            transaction_type, shares, price, total_amount, commission, currency,
+                            traded_at, notes, created_at)
+                     VALUES (?1, ?2, 'a', '410.HK', 'SOHO中国', 'HK',
+                             'SELL', ?3, ?4, ?5, ?6, 'HKD', ?7, NULL, ?8)",
+                    rusqlite::params![
+                        id,
+                        holding_id,
+                        shares,
+                        price,
+                        amount,
+                        comm,
+                        format!("2026-07-1{}", i + 1),
+                        ts,
+                    ],
+                )
+                .unwrap();
+            }
+        }
+        (db, holding_id)
+    }
+
+    #[test]
+    fn test_realized_pnl_includes_open_cost() {
+        let (db, holding_id) = db_with_cleared_position();
+        let conn = db.conn.lock().unwrap();
+        let (realized, total_buy_cost) = compute_realized_pnl(&conn, &holding_id).unwrap();
+        // Cost basis: 930,000 @ 2.74 = 2,548,200 (stored as OPEN)
+        assert_eq!(total_buy_cost, 2_548_200.0);
+        // Sells: 330,155.00 - 557.91 = 329,597.09; realized = 329,597.09 - 2,548,200.00
+        assert!(
+            (realized - (-2_218_602.91)).abs() < 0.01,
+            "realized PnL was {}, expected -2218602.91",
+            realized
+        );
+    }
+
+    #[test]
+    fn test_realized_pnl_buy_sell() {
+        // Regular BUY/SELL trades (no OPEN): BUY 100 @ 10 (comm 1), SELL 100 @ 12 (comm 1.2)
+        let db = Database::new(":memory:").expect("failed to create in-memory database");
+        let holding_id = "h-plain".to_string();
+        let ts = now();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO accounts (id, name, market, created_at, updated_at)
+                 VALUES ('a', 'Test', 'US', ?1, ?1)",
+                rusqlite::params![ts],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO holdings (id, account_id, symbol, name, market, category_id,
+                        shares, avg_cost, currency, created_at, updated_at)
+                 VALUES (?1, 'a', 'AAPL', 'Apple', 'US', NULL, 0.0, 10.0, 'USD', ?2, ?2)",
+                rusqlite::params![holding_id, ts],
+            )
+            .unwrap();
+            for (id, ttype, shares, price, amount, comm) in [
+                ("t1", "BUY", 100.0, 10.0, 1000.0, 1.0),
+                ("t2", "SELL", 100.0, 12.0, 1200.0, 1.2),
+            ] {
+                conn.execute(
+                    "INSERT INTO transactions (id, holding_id, account_id, symbol, name, market,
+                            transaction_type, shares, price, total_amount, commission, currency,
+                            traded_at, notes, created_at)
+                     VALUES (?1, ?2, 'a', 'AAPL', 'Apple', 'US',
+                             ?3, ?4, ?5, ?6, ?7, 'USD', ?8, NULL, ?9)",
+                    rusqlite::params![
+                        id, holding_id, ttype, shares, price, amount, comm, ts, ts
+                    ],
+                )
+                .unwrap();
+            }
+        }
+        let conn = db.conn.lock().unwrap();
+        let (realized, total_buy_cost) = compute_realized_pnl(&conn, &holding_id).unwrap();
+        assert_eq!(total_buy_cost, 1001.0);
+        assert!((realized - 197.8).abs() < 0.01, "realized PnL was {}", realized);
+    }
 }
