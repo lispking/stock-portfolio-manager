@@ -706,7 +706,7 @@ mod tests {
     fn test_cash_delta_buy() {
         use crate::commands::transactions::cash_delta;
         // BUY: cash decreases by total_amount + commission
-        let delta = cash_delta("BUY", 1000.0, 5.0);
+        let delta = cash_delta("BUY", "AAPL", 1000.0, 5.0);
         assert!((delta - (-1005.0)).abs() < 1e-9);
     }
 
@@ -714,7 +714,7 @@ mod tests {
     fn test_cash_delta_sell() {
         use crate::commands::transactions::cash_delta;
         // SELL: cash increases by total_amount - commission
-        let delta = cash_delta("SELL", 2000.0, 10.0);
+        let delta = cash_delta("SELL", "AAPL", 2000.0, 10.0);
         assert!((delta - 1990.0).abs() < 1e-9);
     }
 
@@ -796,7 +796,7 @@ mod tests {
         // Simulate BUY: 100 shares at $150, commission $10
         let total_amount = 15000.0;
         let commission = 10.0;
-        let delta = cash_delta("BUY", total_amount, commission);
+        let delta = cash_delta("BUY", "AAPL", total_amount, commission);
         adjust_cash_holding(&conn, &acct_id, "USD", "US", delta).unwrap();
 
         // Cash should be 50000 - 15010 = 34990
@@ -817,7 +817,7 @@ mod tests {
         // Simulate SELL: 50 shares at $200, commission $8
         let total_amount = 10000.0;
         let commission = 8.0;
-        let delta = cash_delta("SELL", total_amount, commission);
+        let delta = cash_delta("SELL", "AAPL", total_amount, commission);
         adjust_cash_holding(&conn, &acct_id, "USD", "US", delta).unwrap();
 
         // Cash should be 10000 + (10000 - 8) = 19992
@@ -836,7 +836,7 @@ mod tests {
         assert!(get_cash_balance(&conn, &acct_id, "USD").is_none());
 
         // BUY creates cash holding with negative balance
-        let delta = cash_delta("BUY", 5000.0, 5.0);
+        let delta = cash_delta("BUY", "TSLA", 5000.0, 5.0);
         adjust_cash_holding(&conn, &acct_id, "USD", "US", delta).unwrap();
 
         let balance = get_cash_balance(&conn, &acct_id, "USD").unwrap();
@@ -883,19 +883,19 @@ mod tests {
         adjust_cash_holding(&conn, &acct_id, "USD", "US", 100000.0).unwrap();
 
         // BUY: 50 shares at $100, commission $5 → cash -= 5005
-        let d1 = cash_delta("BUY", 5000.0, 5.0);
+        let d1 = cash_delta("BUY", "GOOG", 5000.0, 5.0);
         adjust_cash_holding(&conn, &acct_id, "USD", "US", d1).unwrap();
         let b1 = get_cash_balance(&conn, &acct_id, "USD").unwrap();
         assert!((b1 - 94995.0).abs() < 1e-9);
 
         // BUY: 30 shares at $120, commission $3 → cash -= 3603
-        let d2 = cash_delta("BUY", 3600.0, 3.0);
+        let d2 = cash_delta("BUY", "GOOG", 3600.0, 3.0);
         adjust_cash_holding(&conn, &acct_id, "USD", "US", d2).unwrap();
         let b2 = get_cash_balance(&conn, &acct_id, "USD").unwrap();
         assert!((b2 - 91392.0).abs() < 1e-9);
 
         // SELL: 20 shares at $150, commission $4 → cash += 2996
-        let d3 = cash_delta("SELL", 3000.0, 4.0);
+        let d3 = cash_delta("SELL", "GOOG", 3000.0, 4.0);
         adjust_cash_holding(&conn, &acct_id, "USD", "US", d3).unwrap();
         let b3 = get_cash_balance(&conn, &acct_id, "USD").unwrap();
         assert!((b3 - 94388.0).abs() < 1e-9);
