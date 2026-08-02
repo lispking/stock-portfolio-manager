@@ -101,15 +101,18 @@ pub(crate) fn adjust_cash_holding(
     Ok(())
 }
 
-/// Validate a cash-symbol withdrawal (SELL on $CASH-*): the amount must not
-/// exceed the current cash balance. Returns Ok if valid, Err with a message
-/// otherwise.
+/// Validate a cash-symbol withdrawal (SELL on $CASH-*): the amount must be
+/// finite and positive, and must not exceed the current cash balance. Returns
+/// Ok if valid, Err with a message otherwise.
 pub(crate) fn validate_cash_withdrawal(
     conn: &rusqlite::Connection,
     account_id: &str,
     symbol: &str,
     total_amount: f64,
 ) -> Result<(), String> {
+    if !total_amount.is_finite() || total_amount <= 0.0 {
+        return Err(format!("Invalid cash amount: {}", total_amount));
+    }
     let balance: f64 = conn
         .query_row(
             "SELECT shares FROM holdings WHERE account_id = ?1 AND UPPER(symbol) = UPPER(?2)",
@@ -1099,6 +1102,19 @@ mod tests {
         adjust_cash_holding(&conn, &account_id, "USD", "US", cash_delta("BUY", "$CASH-USD", 1000.0, 0.0)).unwrap();
         adjust_cash_holding(&conn, &account_id, "USD", "US", cash_delta("SELL", "$CASH-USD", 400.0, 0.0)).unwrap();
         assert_eq!(get_cash_shares(&conn, &account_id, "USD"), 600.0);
+    }
+
+    #[test]
+    fn test_cash_delete_reversal_restores_balance() {
+        let (db, account_id) = db_with_account();
+        let conn = db.conn.lock().unwrap();
+        // Deposit 1000, withdraw 400 (balance 600)
+        adjust_cash_holding(&conn, &account_id, "USD", "US", cash_delta("BUY", "$CASH-USD", 1000.0, 0.0)).unwrap();
+        adjust_cash_holding(&conn, &account_id, "USD", "US", cash_delta("SELL", "$CASH-USD", 400.0, 0.0)).unwrap();
+        assert_eq!(get_cash_shares(&conn, &account_id, "USD"), 600.0);
+        // Reverse the withdrawal (what delete_transaction does): +400
+        adjust_cash_holding(&conn, &account_id, "USD", "US", -cash_delta("SELL", "$CASH-USD", 400.0, 0.0)).unwrap();
+        assert_eq!(get_cash_shares(&conn, &account_id, "USD"), 1000.0);
     }
 
     #[test]

@@ -58,7 +58,8 @@ function isClearedPosition(holding: { symbol: string; shares: number }): boolean
 
 /**
  * Compute the cash flow delta caused by a single transaction.
- * Cash-symbol BUY/OPEN → deposit, positive.
+ * Cash-symbol BUY → deposit, positive; cash-symbol SELL → withdrawal, negative
+ *   (mirrors the backend cash_delta sign flip). OPEN/PAY on cash symbols → 0.
  * Stock BUY → cash out (negative). Commission is added to the outflow because
  *   it further reduces available cash on top of the purchase cost.
  * Stock SELL → cash in (positive). Commission is subtracted from the inflow
@@ -68,8 +69,11 @@ function isClearedPosition(holding: { symbol: string; shares: number }): boolean
  */
 function computeCashDelta(txn: Transaction): number {
   if (isCashSymbol(txn.symbol)) {
-    // Cash deposit (BUY or OPEN for the cash symbol itself)
-    return txn.total_amount;
+    // Cash deposit (BUY) → money in; cash withdrawal (SELL) → money out.
+    // Mirrors the backend cash_delta sign flip.
+    if (txn.transaction_type === "BUY") return txn.total_amount;
+    if (txn.transaction_type === "SELL") return -txn.total_amount;
+    return 0; // OPEN/PAY on cash symbols have no cash impact
   }
   switch (txn.transaction_type) {
     case "BUY": return -(txn.total_amount + txn.commission);
@@ -1056,7 +1060,9 @@ export default function HoldingsPage() {
                 width: 80,
                 render: (type: TransactionType, record: CashFlowRow) => {
                   if (isCashSymbol(record.symbol)) {
-                    return <Tag color="blue">存入</Tag>;
+                    return record.transaction_type === "BUY"
+                      ? <Tag color="blue">存入</Tag>
+                      : <Tag color="red">提取</Tag>;
                   }
                   // In the cash flow view, colors reflect the cash impact:
                   // BUY → red (cash decreases), SELL → green (cash increases).
