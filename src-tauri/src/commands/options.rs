@@ -43,6 +43,13 @@ fn parse_option_symbol(symbol: &str) -> Result<(String, String, f64, String), St
 /// Acct ID, Symbol, Trade Date/Time, Settle Date, Exchange, Type, Quantity,
 /// Price, Proceeds, Comm, Fee, Order Type, Code.
 /// Header matching is case-insensitive.
+///
+/// Boundary check: close records (BUY with code C;Ep / A;C / C;P — expired,
+/// assigned or closed) must have a matching open record (SELL with code
+/// starting with "O") with enough remaining quantity, either already in the
+/// database or in the same CSV, or cross-symbol via a configured stock split.
+/// Close records that cannot be matched are rejected instead of inserted, so
+/// option_records never gains an inconsistent orphan close.
 #[tauri::command(rename_all = "camelCase")]
 pub fn import_options_csv(
     db: State<Database>,
@@ -50,6 +57,79 @@ pub fn import_options_csv(
     csv_content: String,
 ) -> Result<ImportOptionsResult, String> {
     import_options_csv_inner(&db, &account_id, &csv_content)
+}
+
+/// A row parsed from the CSV, validated but not yet written.
+struct ParsedOptionRow {
+    row_num: usize,
+    option_symbol: String,
+    underlying: String,
+    expiry_date: String,
+    strike_price: f64,
+    option_type: String,
+    action: String,
+    code: String,
+    quantity: i64,
+    price: f64,
+    amount: f64,
+    commission: f64,
+    fee: f64,
+    traded_at: Option<String>,
+    settled_at: Option<String>,
+}
+
+/// Minimal open-record details needed for cross-symbol split matching.
+struct OpenDetail {
+    underlying: String,
+    expiry_date: String,
+    strike_price: f64,
+    option_type: String,
+}
+
+/// Whether a close record can be matched cross-symbol to an open record via a
+/// configured stock split (mirrors the orphan-close matching in
+/// `recompute_option_statuses`).
+fn has_split_match(
+    opens: &[OpenDetail],
+    splits: &[StockSplit],
+    close_underlying: &str,
+    close_expiry: &str,
+    close_strike: f64,
+    close_type: &str,
+) -> bool {
+    for open in opens {
+        if open.underlying != close_underlying
+            || open.expiry_date != close_expiry
+            || open.option_type != close_type
+        {
+            continue;
+        }
+        for split in splits {
+            if split.stock_code != open.underlying {
+                continue;
+            }
+            let split_ymd = match parse_split_ymd(&split.split_date) {
+                Some(d) => d,
+                None => continue,
+            };
+            let exp_ymd = match parse_expiry_ymd(close_expiry) {
+                Some(d) => d,
+                None => continue,
+            };
+            if (split_ymd.0, split_ymd.1, split_ymd.2) > (exp_ymd.0, exp_ymd.1, exp_ymd.2) {
+                continue;
+            }
+            let ratio = split.ratio_to as f64 / split.ratio_from as f64;
+            let expected_strike = open.strike_price / ratio;
+            if expected_strike > 0.0 {
+                let strike_diff = (close_strike - expected_strike).abs() / expected_strike;
+                if strike_diff <= 0.02 {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Internal helper without the tauri::State wrapper (testable directly).
@@ -77,6 +157,9 @@ fn import_options_csv_inner(
     let mut imported = 0;
     let mut skipped = 0;
     let mut errors: Vec<String> = Vec::new();
+
+    // ---- Pass 1: parse and validate every row (no DB writes yet) ----
+    let mut parsed: Vec<ParsedOptionRow> = Vec::new();
 
     for (i, result) in reader.records().enumerate() {
         let record = match result {
@@ -198,6 +281,152 @@ fn import_options_csv_inner(
             &["交割时间", "settled_at", "Settle Date"],
         );
 
+        parsed.push(ParsedOptionRow {
+            row_num: i + 2,
+            option_symbol,
+            underlying,
+            expiry_date,
+            strike_price,
+            option_type,
+            action,
+            code,
+            quantity,
+            price,
+            amount,
+            commission,
+            fee,
+            traded_at,
+            settled_at,
+        });
+    }
+
+    // ---- Boundary check: load existing DB state ----
+    // Remaining open quantity per option symbol (open qty minus close qty).
+    // Only symbols with remaining > 0 can back an imported close record.
+    let mut available_by_symbol: std::collections::HashMap<String, i64> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT option_symbol,
+                        COALESCE(SUM(CASE WHEN action = 'SELL' AND code LIKE 'O%' THEN ABS(quantity) ELSE 0 END), 0)
+                      - COALESCE(SUM(CASE WHEN action = 'BUY' AND code IN ('C;Ep', 'A;C', 'C;P') THEN ABS(quantity) ELSE 0 END), 0)
+                 FROM option_records WHERE account_id = ?1
+                 GROUP BY option_symbol",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![account_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (symbol, remaining) = row.map_err(|e| e.to_string())?;
+            if remaining > 0 {
+                map.insert(symbol, remaining);
+            }
+        }
+        map
+    };
+
+    // Opens in the DB (SELL + O*) whose group still has remaining quantity,
+    // eligible for cross-symbol split matching.
+    let mut open_pool: Vec<OpenDetail> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT option_symbol, underlying, expiry_date, strike_price, option_type
+                 FROM option_records
+                 WHERE account_id = ?1 AND action = 'SELL' AND code LIKE 'O%'",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![account_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    OpenDetail {
+                        underlying: row.get(1)?,
+                        expiry_date: row.get(2)?,
+                        strike_price: row.get(3)?,
+                        option_type: row.get(4)?,
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut opens = Vec::new();
+        for row in rows {
+            let (option_symbol, open) = row.map_err(|e| e.to_string())?;
+            if available_by_symbol.contains_key(&option_symbol) {
+                opens.push(open);
+            }
+        }
+        opens
+    };
+
+    // Stock splits config, used for cross-symbol matching of split-affected contracts
+    let splits: Vec<StockSplit> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, stock_code, split_date, ratio_from, ratio_to, created_at
+                 FROM stock_splits",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(StockSplit {
+                    id: row.get(0)?,
+                    stock_code: row.get(1)?,
+                    split_date: row.get(2)?,
+                    ratio_from: row.get(3)?,
+                    ratio_to: row.get(4)?,
+                    created_at: row.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| e.to_string())?);
+        }
+        result
+    };
+
+    // Opens in the same CSV participate in the boundary check too, regardless
+    // of their order relative to close records in the file.
+    for row in &parsed {
+        if row.action == "SELL" && row.code.starts_with("O") {
+            *available_by_symbol.entry(row.option_symbol.clone()).or_insert(0) += row.quantity;
+            open_pool.push(OpenDetail {
+                underlying: row.underlying.clone(),
+                expiry_date: row.expiry_date.clone(),
+                strike_price: row.strike_price,
+                option_type: row.option_type.clone(),
+            });
+        }
+    }
+
+    // ---- Pass 2: boundary check for close records, then insert ----
+    for row in &parsed {
+        let is_close = row.action == "BUY"
+            && (row.code == "C;Ep" || row.code == "A;C" || row.code == "C;P");
+        if is_close {
+            let avail = available_by_symbol.get(&row.option_symbol).copied().unwrap_or(0);
+            if avail >= row.quantity {
+                available_by_symbol.insert(row.option_symbol.clone(), avail - row.quantity);
+            } else if !has_split_match(
+                &open_pool,
+                &splits,
+                &row.underlying,
+                &row.expiry_date,
+                row.strike_price,
+                &row.option_type,
+            ) {
+                errors.push(format!(
+                    "Row {}: close record {} ({}) has no matching open record; skipped. \
+                     If the contract was split-adjusted, configure the split info in Settings first",
+                    row.row_num, row.option_symbol, row.code
+                ));
+                continue;
+            }
+        }
+
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -207,24 +436,24 @@ fn import_options_csv_inner(
             rusqlite::params![
                 id,
                 account_id,
-                option_symbol,
-                underlying,
-                expiry_date,
-                strike_price,
-                option_type,
-                action,
-                code,
-                quantity,
-                price,
-                amount,
-                commission,
-                fee,
-                traded_at,
-                settled_at,
+                row.option_symbol,
+                row.underlying,
+                row.expiry_date,
+                row.strike_price,
+                row.option_type,
+                row.action,
+                row.code,
+                row.quantity,
+                row.price,
+                row.amount,
+                row.commission,
+                row.fee,
+                row.traded_at,
+                row.settled_at,
                 now,
             ],
         )
-        .map_err(|e| format!("Row {}: {}", i + 2, e))?;
+        .map_err(|e| format!("Row {}: {}", row.row_num, e))?;
 
         imported += 1;
     }
@@ -411,48 +640,6 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
                     r.action == "SELL" && r.code.starts_with("O") && active_open_ids.contains(&r.id)
                 })
                 .collect();
-
-            // Parse helpers
-            fn parse_expiry_ymd(e: &str) -> Option<(i32, u32, u32)> {
-                let months: std::collections::HashMap<&str, u32> = [
-                    ("JAN", 1),
-                    ("FEB", 2),
-                    ("MAR", 3),
-                    ("APR", 4),
-                    ("MAY", 5),
-                    ("JUN", 6),
-                    ("JUL", 7),
-                    ("AUG", 8),
-                    ("SEP", 9),
-                    ("OCT", 10),
-                    ("NOV", 11),
-                    ("DEC", 12),
-                ]
-                .iter()
-                .cloned()
-                .collect();
-                if e.len() >= 7 {
-                    let day: u32 = e[0..2].parse().ok()?;
-                    let mon: u32 = *months.get(&e[2..5].to_uppercase().as_str())?;
-                    let yr: i32 = 2000 + e[5..7].parse::<i32>().ok()?;
-                    Some((yr, mon, day))
-                } else {
-                    None
-                }
-            }
-
-            fn parse_split_ymd(s: &str) -> Option<(i32, u32, u32)> {
-                let parts: Vec<&str> = s.split('-').collect();
-                if parts.len() == 3 {
-                    Some((
-                        parts[0].parse().ok()?,
-                        parts[1].parse().ok()?,
-                        parts[2].parse().ok()?,
-                    ))
-                } else {
-                    None
-                }
-            }
 
             for ao in &active_opens {
                 // Check if already matched (contract_status changed from 'active')
@@ -1001,6 +1188,49 @@ fn parse_quantity(s: &str) -> i64 {
         .unwrap_or(0)
 }
 
+/// Parse an option expiry like "16JAN26" into (year, month, day).
+fn parse_expiry_ymd(e: &str) -> Option<(i32, u32, u32)> {
+    let months: std::collections::HashMap<&str, u32> = [
+        ("JAN", 1),
+        ("FEB", 2),
+        ("MAR", 3),
+        ("APR", 4),
+        ("MAY", 5),
+        ("JUN", 6),
+        ("JUL", 7),
+        ("AUG", 8),
+        ("SEP", 9),
+        ("OCT", 10),
+        ("NOV", 11),
+        ("DEC", 12),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+    if e.len() >= 7 {
+        let day: u32 = e[0..2].parse().ok()?;
+        let mon: u32 = *months.get(&e[2..5].to_uppercase().as_str())?;
+        let yr: i32 = 2000 + e[5..7].parse::<i32>().ok()?;
+        Some((yr, mon, day))
+    } else {
+        None
+    }
+}
+
+/// Parse a split date like "2023-01-01" into (year, month, day).
+fn parse_split_ymd(s: &str) -> Option<(i32, u32, u32)> {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() == 3 {
+        Some((
+            parts[0].parse().ok()?,
+            parts[1].parse().ok()?,
+            parts[2].parse().ok()?,
+        ))
+    } else {
+        None
+    }
+}
+
 /// Convert expiry date like "16JAN26" to sortable "2026-01-16" format.
 fn parse_expiry_to_sortable(expiry: &str) -> String {
     let expiry = expiry.trim();
@@ -1092,8 +1322,10 @@ pub fn get_option_contracts_inner(
     };
     if needs_recompute {
         let _ = recompute_option_statuses(db, account_id);
-        // After recompute, re-enter with properly computed data
-        return get_option_contracts_inner(db, account_id);
+        // Fall through to the fetch below, which reads the freshly recomputed
+        // statuses. NOTE: do not re-enter this function — recompute can
+        // legitimately leave every record 'active' (e.g. open positions with
+        // no closing record yet), so recursing here would overflow the stack.
     }
 
     // Fetch all records — open records have pre-computed contract_status;
@@ -1248,10 +1480,12 @@ mod tests {
     }
 
     /// A sample IBKR-style English-header options trade CSV.
+    /// All close records have a matching open record (same symbol, enough quantity).
     const ENGLISH_CSV: &str = "\
 Acct ID,Symbol,Trade Date/Time,Settle Date,Exchange,Type,Quantity,Price,Proceeds,Comm,Fee,Order Type,Code
 U1234567,AAPL 20FEB26 100 P,2026-01-15 10:30:00,2026-01-16,SMART,SELL,2,3.50,700,1.20,0.05,LMT,O
 U1234567,AAPL 20FEB26 100 P,2026-01-15 10:30:00,2026-01-16,SMART,SELL,1,3.50,350,1.20,0.05,LMT,O
+U1234567,PDD 20MAR26 80 C,2026-01-10 09:30:00,2026-01-11,SMART,SELL,3,1.50,450,1.00,0.04,LMT,O
 U1234567,PDD 20MAR26 80 C,2026-02-20 09:45:00,2026-02-21,SMART,BUY TO CLOSE,3,2.00,600,0.90,0.04,MKT,C;P
 Total, ,,,,,,,,,,,
 ";
@@ -1261,7 +1495,7 @@ Total, ,,,,,,,,,,,
         let (db, account_id) = db_with_account();
         let result =
             import_options_csv_inner(&db, &account_id, ENGLISH_CSV).expect("import should succeed");
-        assert_eq!(result.imported, 3, "all 3 trade rows should import");
+        assert_eq!(result.imported, 4, "all 4 trade rows should import");
         assert_eq!(result.skipped, 1, "the Total row should be skipped");
         assert!(
             result.errors.is_empty(),
@@ -1274,11 +1508,109 @@ Total, ,,,,,,,,,,,
     fn test_parse_english_header_csv_preview() {
         let preview =
             parse_options_csv(ENGLISH_CSV.to_string()).expect("preview should succeed");
-        assert_eq!(preview.valid_rows, 3);
+        assert_eq!(preview.valid_rows, 4);
         assert!(
             preview.error_rows.is_empty(),
             "expected no errors, got: {:?}",
             preview.error_rows
+        );
+    }
+
+    /// A Chinese-header options trade CSV with one open and one close record.
+    const CN_CSV: &str = "\
+账户,股票,交易时间,交割时间,交易所,操作,股票数量,价格,金额,佣金,费用,类型,代码
+a,AAPL 20FEB26 100 P,2026-01-15,,SMART,卖出,1,2.00,200.00,0,0,LMT,O
+a,AAPL 20FEB26 100 P,2026-02-20,,SMART,买入,1,0.10,10.00,0,0,C;P,C;P
+";
+
+    #[test]
+    fn test_import_rejects_close_without_open() {
+        // A close record (C;Ep expired) with no open record anywhere must be rejected.
+        let (db, account_id) = db_with_account();
+        let csv = "账户,股票,交易时间,交割时间,交易所,操作,股票数量,价格,金额,佣金,费用,类型,代码
+a,AAPL 20FEB26 100 P,2026-02-20,,SMART,买入,1,0.01,1.00,0,0,C;Ep,C;Ep
+";
+        let result = import_options_csv_inner(&db, &account_id, csv).expect("import should succeed");
+        assert_eq!(result.imported, 0, "orphan close must not be inserted");
+        assert_eq!(result.errors.len(), 1, "expected one error, got: {:?}", result.errors);
+    }
+
+    #[test]
+    fn test_import_close_matches_open_in_same_csv() {
+        let (db, account_id) = db_with_account();
+        let result = import_options_csv_inner(&db, &account_id, CN_CSV).expect("import should succeed");
+        assert_eq!(result.imported, 2, "open + close should both import");
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors, got: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn test_import_close_matches_existing_db_open() {
+        // Open already in DB (from a previous import); only the close is imported now.
+        let (db, account_id) = db_with_account();
+        let ts = chrono::Utc::now().to_rfc3339();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO option_records (id, account_id, option_symbol, underlying, expiry_date, strike_price, option_type, action, code, quantity, price, amount, commission, fee, traded_at, settled_at, created_at, contract_status)
+                 VALUES ('o1', ?1, 'AAPL 20FEB26 100 P', 'AAPL', '20FEB26', 100, 'P', 'SELL', 'O', 1, 2.00, 200.00, 0, 0, '2026-01-15', NULL, ?2, 'active')",
+                rusqlite::params![account_id, ts],
+            )
+            .expect("failed to insert open record");
+        }
+        let csv = "账户,股票,交易时间,交割时间,交易所,操作,股票数量,价格,金额,佣金,费用,类型,代码
+a,AAPL 20FEB26 100 P,2026-02-20,,SMART,买入,1,0.10,10.00,0,0,C;P,C;P
+";
+        let result = import_options_csv_inner(&db, &account_id, csv).expect("import should succeed");
+        assert_eq!(result.imported, 1, "close should match the existing open");
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors, got: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn test_import_close_exceeding_open_quantity_rejected() {
+        // Open 1 contract but close 2 contracts: the extra close has no backing open.
+        let (db, account_id) = db_with_account();
+        let csv = "账户,股票,交易时间,交割时间,交易所,操作,股票数量,价格,金额,佣金,费用,类型,代码
+a,AAPL 20FEB26 100 P,2026-01-15,,SMART,卖出,1,2.00,200.00,0,0,LMT,O
+a,AAPL 20FEB26 100 P,2026-02-20,,SMART,买入,2,0.10,20.00,0,0,C;P,C;P
+";
+        let result = import_options_csv_inner(&db, &account_id, csv).expect("import should succeed");
+        assert_eq!(result.imported, 1, "only the open should import");
+        assert_eq!(result.errors.len(), 1, "close exceeding open qty must be rejected");
+    }
+
+    #[test]
+    fn test_import_split_adjusted_close_matches() {
+        // Contract split 2:1 configured in settings: open at strike 330 (BRK B),
+        // close at strike 165 (post-split symbol). Must match cross-symbol.
+        let (db, account_id) = db_with_account();
+        let ts = chrono::Utc::now().to_rfc3339();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO stock_splits (stock_code, split_date, ratio_from, ratio_to, created_at)
+                 VALUES ('BRK B', '2023-01-01', 1, 2, ?1)",
+                rusqlite::params![ts],
+            )
+            .expect("failed to insert stock split");
+        }
+        let csv = "账户,股票,交易时间,交割时间,交易所,操作,股票数量,价格,金额,佣金,费用,类型,代码
+a,BRK B 16JUN23 330 C,2023-01-10,,SMART,卖出,1,2.00,200.00,0,0,LMT,O
+a,BRK B 16JUN23 165 C,2023-06-10,,SMART,买入,1,0.10,10.00,0,0,C;P,C;P
+";
+        let result = import_options_csv_inner(&db, &account_id, csv).expect("import should succeed");
+        assert_eq!(result.imported, 2, "split-adjusted close should match via split config");
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors, got: {:?}",
+            result.errors
         );
     }
 
@@ -1291,6 +1623,33 @@ Total, ,,,,,,,,,,,
         assert_eq!(normalize_action("卖出开仓"), "SELL");
         assert_eq!(normalize_action("买入平仓"), "BUY");
         assert_eq!(normalize_action("unknown"), "");
+    }
+
+    /// An account whose records are all 'active' (e.g. only open positions,
+    /// or every close was rejected by the import boundary check) must not
+    /// cause get_option_contracts_inner to recompute endlessly and overflow
+    /// the stack — it should return the contracts normally.
+    #[test]
+    fn test_get_contracts_all_active_no_stack_overflow() {
+        let (db, account_id) = db_with_account();
+        let ts = chrono::Utc::now().to_rfc3339();
+        {
+            let conn = db.conn.lock().unwrap();
+            // Open positions only — no close records, all contract_status = 'active'
+            for (id, symbol, strike) in [
+                ("o1", "AAPL 20FEB26 100 P", 100.0),
+                ("o2", "TSLA 20MAR26 250 C", 250.0),
+            ] {
+                conn.execute(
+                    "INSERT INTO option_records (id, account_id, option_symbol, underlying, expiry_date, strike_price, option_type, action, code, quantity, price, amount, commission, fee, traded_at, settled_at, created_at, contract_status)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'SELL', 'O', 1, 2.00, 200.00, 0, 0, '2026-01-15', NULL, ?8, 'active')",
+                    rusqlite::params![id, account_id, symbol, symbol.split(' ').next().unwrap(), "20FEB26", strike, "P", ts],
+                )
+                .unwrap();
+            }
+        }
+        let contracts = get_option_contracts_inner(&db, &account_id).expect("should not crash");
+        assert_eq!(contracts.len(), 2, "both open contracts should be returned");
     }
 
     #[test]
