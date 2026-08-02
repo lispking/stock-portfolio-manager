@@ -1072,6 +1072,35 @@ mod tests {
         (db, account_id)
     }
 
+    fn get_cash_shares(conn: &rusqlite::Connection, account_id: &str, currency: &str) -> f64 {
+        conn.query_row(
+            "SELECT shares FROM holdings WHERE account_id = ?1 AND symbol = ?2",
+            rusqlite::params![account_id, format!("$CASH-{}", currency)],
+            |row| row.get(0),
+        )
+        .unwrap_or(0.0)
+    }
+
+    #[test]
+    fn test_cash_deposit_increases_balance() {
+        let (db, account_id) = db_with_account();
+        let conn = db.conn.lock().unwrap();
+        // Deposit 1000 USD: BUY on $CASH-USD
+        let delta = cash_delta("BUY", "$CASH-USD", 1000.0, 0.0);
+        adjust_cash_holding(&conn, &account_id, "USD", "US", delta).unwrap();
+        assert_eq!(get_cash_shares(&conn, &account_id, "USD"), 1000.0);
+    }
+
+    #[test]
+    fn test_cash_withdraw_decreases_balance() {
+        let (db, account_id) = db_with_account();
+        let conn = db.conn.lock().unwrap();
+        // Deposit 1000, then withdraw 400: SELL on $CASH-USD
+        adjust_cash_holding(&conn, &account_id, "USD", "US", cash_delta("BUY", "$CASH-USD", 1000.0, 0.0)).unwrap();
+        adjust_cash_holding(&conn, &account_id, "USD", "US", cash_delta("SELL", "$CASH-USD", 400.0, 0.0)).unwrap();
+        assert_eq!(get_cash_shares(&conn, &account_id, "USD"), 600.0);
+    }
+
     #[test]
     fn test_validate_transaction_shares_allows_cash() {
         // Cash transactions have shares=0 and must pass validation.
