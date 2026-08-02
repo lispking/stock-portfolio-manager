@@ -75,6 +75,10 @@ export default function TransactionsPage() {
   const [form] = Form.useForm();
   const watchedType = Form.useWatch("transactionType", form);
   const isDividend = watchedType === "PAY";
+  // Cash deposit/withdraw: 存入现金 → $CASH-* BUY; 提取现金 → $CASH-* SELL
+  const isCashTxn = watchedType === "CASH_IN" || watchedType === "CASH_OUT";
+  const cashDirection = watchedType === "CASH_IN" ? "BUY" : "SELL";
+  const CASH_SYMBOL_PREFIX = "$CASH-";
   const selectedFormMarket = Form.useWatch("market", form) as Market | undefined;
   const [accountHoldings, setAccountHoldings] = useState<Holding[]>([]);
   const [symbolSearching, setSymbolSearching] = useState(false);
@@ -198,18 +202,34 @@ export default function TransactionsPage() {
     const submittedValues = values.transactionType === "PAY"
       ? { ...values, shares: 0, price: 0 }
       : values;
+    if (isCashTxn && !values.currency) {
+      message.error("请先选择币种");
+      return;
+    }
+    // For cash deposit/withdraw, map to $CASH-* BUY/SELL with fixed fields
+    const cashSubmitted = isCashTxn
+      ? {
+          ...submittedValues,
+          transactionType: cashDirection as TransactionType, // BUY (deposit) or SELL (withdraw)
+          symbol: `${CASH_SYMBOL_PREFIX}${values.currency}`,
+          name: `现金 (${values.currency})`,
+          shares: 0,
+          price: 0,
+          commission: 0,
+        }
+      : submittedValues;
     try {
       if (editingTransaction) {
         await updateTransaction({
           id: editingTransaction.id,
-          ...submittedValues,
-          tradedAt: submittedValues.tradedAt.toISOString(),
+          ...cashSubmitted,
+          tradedAt: cashSubmitted.tradedAt.toISOString(),
         });
         message.success("交易记录更新成功");
       } else {
         await createTransaction({
-          ...submittedValues,
-          tradedAt: submittedValues.tradedAt.toISOString(),
+          ...cashSubmitted,
+          tradedAt: cashSubmitted.tradedAt.toISOString(),
         });
         message.success("交易记录添加成功");
       }
@@ -230,12 +250,17 @@ export default function TransactionsPage() {
     } catch {
       setAccountHoldings([]);
     }
+    // If editing a cash record, show the cash-specific type
+    const isCashRecord = record.symbol.startsWith(CASH_SYMBOL_PREFIX);
+    const cashType = isCashRecord
+      ? record.transaction_type === "BUY" ? "CASH_IN" : "CASH_OUT"
+      : record.transaction_type;
     form.setFieldsValue({
       accountId: record.account_id,
       symbol: record.symbol,
       name: record.name,
       market: record.market,
-      transactionType: record.transaction_type,
+      transactionType: cashType,
       shares: record.shares,
       price: record.price,
       totalAmount: record.total_amount,
@@ -313,23 +338,35 @@ export default function TransactionsPage() {
       title: "类型",
       dataIndex: "transaction_type",
       key: "transaction_type",
-      render: (type: TransactionType) => (
-        <Tag color={type === "BUY" ? "green" : type === "OPEN" ? "blue" : type === "PAY" ? "orange" : "red"}>
-          {type === "BUY" ? "买入" : type === "OPEN" ? "建仓" : type === "PAY" ? "分红" : "卖出"}
-        </Tag>
-      ),
+      render: (type: TransactionType, record: Transaction) => {
+        const isCashRecord = record.symbol.startsWith(CASH_SYMBOL_PREFIX);
+        if (isCashRecord) {
+          return (
+            <Tag color={record.transaction_type === "BUY" ? "green" : "red"}>
+              {record.transaction_type === "BUY" ? "存入" : "提取"}
+            </Tag>
+          );
+        }
+        return (
+          <Tag color={type === "BUY" ? "green" : type === "OPEN" ? "blue" : type === "PAY" ? "orange" : "red"}>
+            {type === "BUY" ? "买入" : type === "OPEN" ? "建仓" : type === "PAY" ? "分红" : "卖出"}
+          </Tag>
+        );
+      },
     },
     {
       title: "股数",
       dataIndex: "shares",
       key: "shares",
-      render: (v: number) => v.toLocaleString(),
+      render: (v: number, record: Transaction) =>
+        record.symbol.startsWith(CASH_SYMBOL_PREFIX) ? "—" : v.toLocaleString(),
     },
     {
       title: "价格",
       dataIndex: "price",
       key: "price",
-      render: (v: number, record: Transaction) => `${currencySymbol[record.currency]}${v.toFixed(2)}`,
+      render: (v: number, record: Transaction) =>
+        record.symbol.startsWith(CASH_SYMBOL_PREFIX) ? "—" : `${currencySymbol[record.currency]}${v.toFixed(2)}`,
     },
     {
       title: "总金额",
@@ -509,29 +546,31 @@ export default function TransactionsPage() {
               ))}
             </Select>
           </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="symbol" label="股票代码" style={{ marginBottom: 12 }}
-                rules={[{ required: true, message: "请输入股票代码" }]}>
-                <AutoComplete
-                  options={symbolOptions}
-                  placeholder="输入或选择股票代码"
-                  onSelect={handleSymbolSelect}
-                  onBlur={handleSymbolBlur}
-                  filterOption={(inputValue, option) =>
-                    (option?.value?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0 ||
-                    (option?.label?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0
-                  }
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="name" label="股票名称" style={{ marginBottom: 12 }}
-                rules={[{ required: true, message: "请输入股票名称" }]}>
-                <Input placeholder="如：苹果" disabled={symbolSearching} />
-              </Form.Item>
-            </Col>
-          </Row>
+          {!isCashTxn && (
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="symbol" label="股票代码" style={{ marginBottom: 12 }}
+                  rules={[{ required: true, message: "请输入股票代码" }]}>
+                  <AutoComplete
+                    options={symbolOptions}
+                    placeholder="输入或选择股票代码"
+                    onSelect={handleSymbolSelect}
+                    onBlur={handleSymbolBlur}
+                    filterOption={(inputValue, option) =>
+                      (option?.value?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0 ||
+                      (option?.label?.toString().toUpperCase().indexOf(inputValue.toUpperCase()) ?? -1) >= 0
+                    }
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="name" label="股票名称" style={{ marginBottom: 12 }}
+                  rules={[{ required: true, message: "请输入股票名称" }]}>
+                  <Input placeholder="如：苹果" disabled={symbolSearching} />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="transactionType" label="交易类型" style={{ marginBottom: 12 }}
@@ -540,6 +579,8 @@ export default function TransactionsPage() {
                   <Select.Option value="BUY">买入</Select.Option>
                   <Select.Option value="SELL">卖出</Select.Option>
                   <Select.Option value="PAY">分红</Select.Option>
+                  <Select.Option value="CASH_IN">存入现金</Select.Option>
+                  <Select.Option value="CASH_OUT">提取现金</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -550,7 +591,7 @@ export default function TransactionsPage() {
               </Form.Item>
             </Col>
           </Row>
-          {!isDividend && (
+          {!isDividend && !isCashTxn && (
             <Row gutter={12}>
               <Col span={12}>
                 <Form.Item name="shares" label="交易股数" style={{ marginBottom: 12 }}
