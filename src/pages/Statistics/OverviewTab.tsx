@@ -75,6 +75,11 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
     }>();
     for (const hq of holdingQuotes) {
       if (hq.symbol.startsWith("$CASH-")) continue;
+      // Skip cleared positions (shares == 0): they have no market value and
+      // belong only in the holdings page's "已清仓股票" view, not in the
+      // per-stock detail table (consistent with market statistics, which
+      // filter WHERE h.shares > 0).
+      if (hq.shares <= 0) continue;
       const key = hq.symbol;
       const existing = map.get(key);
       const mvNative = hq.market_value ?? 0;
