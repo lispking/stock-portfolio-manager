@@ -57,6 +57,10 @@ static BUILTIN_SKILLS: &[(&str, &str)] = &[
         "options-review",
         include_str!("../skills/options-review.md"),
     ),
+    (
+        "munger-perspective",
+        include_str!("../skills/munger-perspective.md"),
+    ),
 ];
 
 /// Name of the hidden marker directory that tracks which skill files were
@@ -82,7 +86,7 @@ pub fn skills_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// whose on-disk version is older than this — but ONLY if the user hasn't
 /// edited it (the `.builtin/{stem}` marker still exists). User-edited skills
 /// (marker removed by `save_skill`) are never auto-overwritten.
-const BUILTIN_SKILLS_VERSION: u32 = 3;
+const BUILTIN_SKILLS_VERSION: u32 = 4;
 
 /// Materialise built-in skills into the user directory on first launch, and
 /// auto-update them when [`BUILTIN_SKILLS_VERSION`] bumps.
@@ -668,6 +672,31 @@ mod tests {
 
     fn write(path: &Path, body: &str) {
         fs::write(path, body).unwrap();
+    }
+
+    // --- built-in skills -----------------------------------------------------
+
+    #[test]
+    fn all_builtin_skills_parse_with_name_and_trigger() {
+        for (stem, body) in BUILTIN_SKILLS {
+            let parsed = parse_skill_from_str(stem, body, Path::new(stem)).expect(stem);
+            assert!(!parsed.name.is_empty(), "{stem} missing name");
+            assert!(!parsed.description.is_empty(), "{stem} missing description");
+            assert!(!parsed.trigger.is_empty(), "{stem} missing trigger");
+        }
+    }
+
+    #[test]
+    fn munger_perspective_builtin() {
+        // The 芒格视角 skill: Chinese name, description and CJK trigger words.
+        let (_, body) = BUILTIN_SKILLS
+            .iter()
+            .find(|(stem, _)| *stem == "munger-perspective")
+            .expect("munger-perspective must be a builtin skill");
+        let parsed = parse_skill_from_str("munger-perspective", body, Path::new("munger-perspective.md")).unwrap();
+        assert_eq!(parsed.name, "芒格视角");
+        assert_eq!(parsed.trigger, vec!["芒格视角", "芒格"]);
+        assert!(parsed.content.contains("查理·芒格"));
     }
 
     // --- parse_frontmatter ---------------------------------------------------
