@@ -392,7 +392,9 @@ fn import_options_csv_inner(
     // of their order relative to close records in the file.
     for row in &parsed {
         if row.action == "SELL" && row.code.starts_with("O") {
-            *available_by_symbol.entry(row.option_symbol.clone()).or_insert(0) += row.quantity;
+            // Exported CSVs carry negative quantities for SELL opens; the
+            // boundary check works with positive contract counts.
+            *available_by_symbol.entry(row.option_symbol.clone()).or_insert(0) += row.quantity.abs();
             open_pool.push(OpenDetail {
                 underlying: row.underlying.clone(),
                 expiry_date: row.expiry_date.clone(),
@@ -406,9 +408,10 @@ fn import_options_csv_inner(
     for row in &parsed {
         let is_close = row.action == "BUY" && is_close_code(&row.code);
         if is_close {
+            let close_qty = row.quantity.abs();
             let avail = available_by_symbol.get(&row.option_symbol).copied().unwrap_or(0);
-            if avail >= row.quantity {
-                available_by_symbol.insert(row.option_symbol.clone(), avail - row.quantity);
+            if avail >= close_qty {
+                available_by_symbol.insert(row.option_symbol.clone(), avail - close_qty);
             } else if !has_split_match(
                 &open_pool,
                 &splits,
@@ -952,6 +955,11 @@ pub fn delete_option_records(db: State<Database>, account_id: String) -> Result<
 /// The output CSV uses the same format as the import CSV for round-trip compatibility.
 #[tauri::command(rename_all = "camelCase")]
 pub fn export_options_csv(db: State<Database>, account_id: String) -> Result<String, String> {
+    export_options_csv_inner(&db, &account_id)
+}
+
+/// Internal helper without the tauri::State wrapper (testable directly).
+fn export_options_csv_inner(db: &Database, account_id: &str) -> Result<String, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
@@ -1755,6 +1763,39 @@ a,BRK B 16JUN23 165 C,2023-06-10,,SMART,买入,1,0.10,10.00,0,0,C;P,C;P
             "sell 100 then buy back 100 (C) should be closed, got {}",
             status
         );
+    }
+
+    #[test]
+    fn test_export_round_trip_plain_c_close_matches() {
+        // User-reported: export → clear → re-import must preserve matching.
+        // SELL O 200, BUY C 100, BUY C;Ep 100 → open must be 'expired'.
+        let (db, account_id) = db_with_account();
+        let ts = chrono::Utc::now().to_rfc3339();
+        {
+            let conn = db.conn.lock().unwrap();
+            insert_857_scenario(&conn, &account_id, &ts);
+        }
+        let csv = export_options_csv_inner(&db, &account_id).expect("export should succeed");
+        // Clear all records, then re-import the exported CSV.
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute("DELETE FROM option_records WHERE account_id = ?1", rusqlite::params![account_id])
+                .unwrap();
+        }
+        let result = import_options_csv_inner(&db, &account_id, &csv).expect("import should succeed");
+        assert_eq!(result.imported, 3, "all 3 rows re-imported, got {:?}", result.errors);
+        // After import, recompute should mark the open (SELL O) as expired.
+        recompute_option_statuses(&db, &account_id).expect("recompute should succeed");
+        let conn = db.conn.lock().unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT contract_status FROM option_records
+                 WHERE account_id = ?1 AND action = 'SELL' AND option_symbol = '857 30OCT23 6 C'",
+                rusqlite::params![account_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "expired", "round-trip open should be expired, got {}", status);
     }
 
     #[test]
