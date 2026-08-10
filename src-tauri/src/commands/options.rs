@@ -44,7 +44,7 @@ fn parse_option_symbol(symbol: &str) -> Result<(String, String, f64, String), St
 /// Price, Proceeds, Comm, Fee, Order Type, Code.
 /// Header matching is case-insensitive.
 ///
-/// Boundary check: close records (BUY with code C;Ep / A;C / C;P — expired,
+/// Boundary check: close records (BUY with code C / C;Ep / A;C / C;P — closed, expired,
 /// assigned or closed) must have a matching open record (SELL with code
 /// starting with "O") with enough remaining quantity, either already in the
 /// database or in the same CSV, or cross-symbol via a configured stock split.
@@ -308,7 +308,7 @@ fn import_options_csv_inner(
             .prepare(
                 "SELECT option_symbol,
                         COALESCE(SUM(CASE WHEN action = 'SELL' AND code LIKE 'O%' THEN ABS(quantity) ELSE 0 END), 0)
-                      - COALESCE(SUM(CASE WHEN action = 'BUY' AND code IN ('C;Ep', 'A;C', 'C;P') THEN ABS(quantity) ELSE 0 END), 0)
+                      - COALESCE(SUM(CASE WHEN action = 'BUY' AND code IN ('C', 'C;Ep', 'A;C', 'C;P') THEN ABS(quantity) ELSE 0 END), 0)
                  FROM option_records WHERE account_id = ?1
                  GROUP BY option_symbol",
             )
@@ -404,8 +404,7 @@ fn import_options_csv_inner(
 
     // ---- Pass 2: boundary check for close records, then insert ----
     for row in &parsed {
-        let is_close = row.action == "BUY"
-            && (row.code == "C;Ep" || row.code == "A;C" || row.code == "C;P");
+        let is_close = row.action == "BUY" && is_close_code(&row.code);
         if is_close {
             let avail = available_by_symbol.get(&row.option_symbol).copied().unwrap_or(0);
             if avail >= row.quantity {
@@ -479,7 +478,7 @@ fn import_options_csv_inner(
 }
 
 /// Recompute contract_status for all open records of an account.
-/// Pairs open (SELL+O) and close (BUY+C;Ep/A;C/C;P) records by option_symbol,
+/// Pairs open (SELL+O) and close (BUY+C/C;Ep/A;C/C;P) records by option_symbol,
 /// and handles cross-symbol split-affected contract matching.
 fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
@@ -552,9 +551,7 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
 
         let mut closes: Vec<&Rec> = group_recs
             .iter()
-            .filter(|r| {
-                r.action == "BUY" && (r.code == "C;Ep" || r.code == "A;C" || r.code == "C;P")
-            })
+            .filter(|r| r.action == "BUY" && is_close_code(&r.code))
             .copied()
             .collect();
         closes.sort_by(|a, b| a.traded_at.cmp(&b.traded_at));
@@ -574,7 +571,7 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
         if total_open_qty > 0 && total_close_qty >= total_open_qty {
             let status = match closes.last().map(|c| c.code.as_str()) {
                 Some("A;C") => "assigned",
-                Some("C;P") => "closed",
+                Some("C;P") | Some("C") => "closed",
                 _ => "expired",
             };
 
@@ -689,7 +686,7 @@ fn recompute_option_statuses(db: &Database, account_id: &str) -> Result<(), Stri
                     if matched_qty >= contract_qty {
                         let status = match last_code {
                             Some("A;C") => "assigned",
-                            Some("C;P") => "closed",
+                            Some("C;P") | Some("C") => "closed",
                             _ => "expired",
                         };
                         let _ = conn.execute(
@@ -1188,6 +1185,13 @@ fn parse_quantity(s: &str) -> i64 {
         .unwrap_or(0)
 }
 
+/// Whether a code on a BUY record terminates an open (SELL + O*) position.
+/// `C` is a plain buy-to-close; `C;Ep` expired worthless, `A;C` assigned and
+/// closed, `C;P` closed via exercise/put.
+fn is_close_code(code: &str) -> bool {
+    code == "C" || code == "C;Ep" || code == "A;C" || code == "C;P"
+}
+
 /// Parse an option expiry like "16JAN26" into (year, month, day).
 fn parse_expiry_ymd(e: &str) -> Option<(i32, u32, u32)> {
     let months: std::collections::HashMap<&str, u32> = [
@@ -1395,9 +1399,7 @@ pub fn get_option_contracts_inner(
         // Close records
         let mut closes: Vec<&OptionRecord> = recs
             .iter()
-            .filter(|r| {
-                r.action == "BUY" && (r.code == "C;Ep" || r.code == "A;C" || r.code == "C;P")
-            })
+            .filter(|r| r.action == "BUY" && is_close_code(&r.code))
             .collect();
         closes.sort_by(|a, b| a.traded_at.cmp(&b.traded_at));
 
@@ -1675,6 +1677,101 @@ a,BRK B 16JUN23 165 C,2023-06-10,,SMART,买入,1,0.10,10.00,0,0,C;P,C;P
         assert_eq!(
             get_field(&record, &headers, &["trade date/time"]).as_deref(),
             Some("2026-01-15 10:30:00")
+        );
+    }
+
+    /// User-reported scenario: sell call 200 contracts (SELL O, qty -200),
+    /// buy back 100 (BUY code C), 100 expire (BUY code C;Ep). Total close qty
+    /// 200 matches open qty 200, so the open must NOT stay 'active'.
+    fn insert_857_scenario(conn: &rusqlite::Connection, account_id: &str, ts: &str) {
+        for (id, action, code, qty, traded) in [
+            ("r1", "SELL", "O", -200, "2023-09-06, 22:47:47"),
+            ("r2", "BUY", "C", 100, "2023-09-13, 01:08:34"),
+            ("r3", "BUY", "C;Ep", 100, "2023/10/30"),
+        ] {
+            conn.execute(
+                "INSERT INTO option_records (id, account_id, option_symbol, underlying, expiry_date, strike_price, option_type, action, code, quantity, price, amount, commission, fee, traded_at, settled_at, created_at, contract_status)
+                 VALUES (?1, ?2, '857 30OCT23 6 C', '857', '30OCT23', 6.0, 'C', ?3, ?4, ?5, 0.1, 0.0, 0.0, 0.0, ?6, NULL, ?7, 'active')",
+                rusqlite::params![id, account_id, action, code, qty, traded, ts],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn test_recompute_plain_c_close_matches_and_expires() {
+        let (db, account_id) = db_with_account();
+        let ts = chrono::Utc::now().to_rfc3339();
+        {
+            let conn = db.conn.lock().unwrap();
+            insert_857_scenario(&conn, &account_id, &ts);
+        }
+        recompute_option_statuses(&db, &account_id).expect("recompute should succeed");
+        let conn = db.conn.lock().unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT contract_status FROM option_records WHERE id = 'r1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            status, "expired",
+            "sell 200 with 100 closed (C) + 100 expired (C;Ep) should be expired, got {}",
+            status
+        );
+    }
+
+    #[test]
+    fn test_recompute_plain_c_close_only_marks_closed() {
+        // SELL O 100 then BUY C 100 → fully closed via plain C code.
+        let (db, account_id) = db_with_account();
+        let ts = chrono::Utc::now().to_rfc3339();
+        {
+            let conn = db.conn.lock().unwrap();
+            for (id, action, code, qty, traded) in [
+                ("r1", "SELL", "O", -100, "2023-09-06, 22:47:47"),
+                ("r2", "BUY", "C", 100, "2023-09-13, 01:08:34"),
+            ] {
+                conn.execute(
+                    "INSERT INTO option_records (id, account_id, option_symbol, underlying, expiry_date, strike_price, option_type, action, code, quantity, price, amount, commission, fee, traded_at, settled_at, created_at, contract_status)
+                     VALUES (?1, ?2, '857 30OCT23 6 C', '857', '30OCT23', 6.0, 'C', ?3, ?4, ?5, 0.1, 0.0, 0.0, 0.0, ?6, NULL, ?7, 'active')",
+                    rusqlite::params![id, account_id, action, code, qty, traded, ts],
+                )
+                .unwrap();
+            }
+        }
+        recompute_option_statuses(&db, &account_id).expect("recompute should succeed");
+        let conn = db.conn.lock().unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT contract_status FROM option_records WHERE id = 'r1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            status, "closed",
+            "sell 100 then buy back 100 (C) should be closed, got {}",
+            status
+        );
+    }
+
+    #[test]
+    fn test_import_plain_c_close_accepted_with_open() {
+        // Import boundary check must treat plain code C as a close record.
+        let (db, account_id) = db_with_account();
+        let csv = "账户,股票,交易时间,交割时间,交易所,操作,股票数量,价格,金额,佣金,费用,类型,代码
+a,857 30OCT23 6 C,2023-09-06,,SMART,卖出,200,0.13,52000.00,-204,0,LMT,O
+a,857 30OCT23 6 C,2023-09-13,,SMART,买入,100,0.07,14000.00,-78,0,C,C
+a,857 30OCT23 6 C,2023-10-30,,SMART,买入,100,0.00,0.00,0,0,C;Ep,C;Ep
+";
+        let result = import_options_csv_inner(&db, &account_id, csv).expect("import should succeed");
+        assert_eq!(result.imported, 3, "open + C close + C;Ep close should all import");
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors, got: {:?}",
+            result.errors
         );
     }
 }
