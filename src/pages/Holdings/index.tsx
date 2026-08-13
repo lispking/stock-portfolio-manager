@@ -150,7 +150,10 @@ export default function HoldingsPage() {
   const [cashForm] = Form.useForm();
   const selectedFormMarket = Form.useWatch("market", form) as Market | undefined;
   const [fetchingName, setFetchingName] = useState(false);
-  const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
+  // Remember the last "按账户" filter selection across sessions.
+  const [filterAccountId, setFilterAccountId] = useState<string | undefined>(() => {
+    return localStorage.getItem("holdings_filter_account_id") || undefined;
+  });
   const [filterMarket, setFilterMarket] = useState<Market | undefined>(undefined);
   const [symbolSearch, setSymbolSearch] = useState("");
   const displayDataRef = useRef<HoldingWithQuote[]>([]);
@@ -258,6 +261,17 @@ export default function HoldingsPage() {
     fetchAccounts();
     fetchCategories();
   }, [fetchHoldings, fetchAccounts, fetchCategories]);
+
+  // Clear a persisted filter that references a deleted account.
+  useEffect(() => {
+    if (filterAccountId && accounts.length > 0) {
+      const exists = accounts.some((a) => a.id === filterAccountId);
+      if (!exists) {
+        setFilterAccountId(undefined);
+        localStorage.removeItem("holdings_filter_account_id");
+      }
+    }
+  }, [accounts, filterAccountId]);
 
   useEffect(() => {
     fetchRates();
@@ -798,7 +812,14 @@ export default function HoldingsPage() {
             <Text type="secondary">按账户:</Text>
             <Select
               value={filterAccountId}
-              onChange={setFilterAccountId}
+              onChange={(v) => {
+                setFilterAccountId(v);
+                if (v) {
+                  localStorage.setItem("holdings_filter_account_id", v);
+                } else {
+                  localStorage.removeItem("holdings_filter_account_id");
+                }
+              }}
               placeholder="全部账户"
               allowClear
               style={{ width: 180 }}

@@ -82,7 +82,10 @@ export default function TransactionsPage() {
   const selectedFormMarket = Form.useWatch("market", form) as Market | undefined;
   const [accountHoldings, setAccountHoldings] = useState<Holding[]>([]);
   const [symbolSearching, setSymbolSearching] = useState(false);
-  const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
+  // Remember the last "按账户" filter selection across sessions.
+  const [filterAccountId, setFilterAccountId] = useState<string | undefined>(() => {
+    return localStorage.getItem("transactions_filter_account_id") || undefined;
+  });
   const [stockColumnFilters, setStockColumnFilters] = useState<string[] | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [excelImportModalOpen, setExcelImportModalOpen] = useState(false);
@@ -95,9 +98,25 @@ export default function TransactionsPage() {
     fetchAccounts();
   }, [fetchTransactions, fetchAccounts]);
 
+  // Clear a persisted filter that references a deleted account.
+  useEffect(() => {
+    if (filterAccountId && accounts.length > 0) {
+      const exists = accounts.some((a) => a.id === filterAccountId);
+      if (!exists) {
+        setFilterAccountId(undefined);
+        localStorage.removeItem("transactions_filter_account_id");
+      }
+    }
+  }, [accounts, filterAccountId]);
+
   const handleFilterAccountChange = useCallback((v: string | undefined) => {
     setFilterAccountId(v);
     setStockColumnFilters(null);
+    if (v) {
+      localStorage.setItem("transactions_filter_account_id", v);
+    } else {
+      localStorage.removeItem("transactions_filter_account_id");
+    }
   }, []);
 
   // When account changes, set default market/currency/time and load holdings
