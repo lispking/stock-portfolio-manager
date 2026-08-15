@@ -914,3 +914,33 @@ export interface StockPriceInput {
   price: number;
 }
 
+// --- Dividend analysis ---
+
+export interface AccountDividend {
+  account_id: string;
+  account_name: string;
+  total: number;
+}
+
+export interface DividendRow {
+  symbol: string;
+  name: string;
+  /** [account_id, amount][] — amounts in the market's native currency. */
+  per_account: [string, number][];
+  total: number;
+}
+
+export interface MarketDividend {
+  market: Market;
+  currency: Currency;
+  accounts: AccountDividend[];
+  rows: DividendRow[];
+  total: number;
+}
+
+export interface DividendAnalysis {
+  year: number;
+  markets: MarketDividend[];
+  grand_total: number;
+}
+

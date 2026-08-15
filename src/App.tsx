@@ -10,6 +10,7 @@ import AccountsPage from "./pages/Accounts";
 import HoldingsPage from "./pages/Holdings";
 import TransactionsPage from "./pages/Transactions";
 import StatisticsPage from "./pages/Statistics";
+import DividendsPage from "./pages/Dividends";
 import PerformancePage from "./pages/Performance";
 import QuarterlyPage from "./pages/Quarterly";
 import SnapshotDetail from "./pages/Quarterly/SnapshotDetail";
@@ -109,6 +110,7 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/statistics" element={<StatisticsPage />} />
+          <Route path="/dividends" element={<DividendsPage />} />
           <Route path="/performance" element={<PerformancePage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/holdings" element={<HoldingsPage />} />

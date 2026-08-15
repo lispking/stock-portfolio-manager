@@ -15,6 +15,7 @@ import {
   SettingOutlined,
   FundOutlined,
   RobotOutlined,
+  GiftOutlined,
 } from "@ant-design/icons";
 
 const { Sider, Content } = Layout;
@@ -28,6 +29,7 @@ const menuItems = [
   { key: "/holdings", icon: <StockOutlined />, label: "持仓管理" },
   { key: "/transactions", icon: <SwapOutlined />, label: "交易记录" },
   { key: "/options", icon: <FundOutlined />, label: "期权管理" },
+  { key: "/dividends", icon: <GiftOutlined />, label: "分红分析" },
   { key: "/import", icon: <ImportOutlined />, label: "导入导出" },
   { key: "/alerts", icon: <BellOutlined />, label: "价格提醒" },
   { key: "/review", icon: <HistoryOutlined />, label: "操作复盘" },

@@ -222,6 +222,8 @@ pub fn run() {
             commands::statistics::get_statistics_overview,
             commands::statistics::get_statistics_by_market,
             commands::statistics::get_statistics_by_account,
+            commands::dividends::get_dividend_analysis,
+            commands::dividends::get_dividend_years,
             commands::statistics::get_statistics_by_category,
             commands::performance::get_performance_summary,
             commands::performance::get_return_series,

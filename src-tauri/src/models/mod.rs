@@ -3,6 +3,7 @@ pub mod ai_config;
 pub mod alert;
 pub mod category;
 pub mod dashboard;
+pub mod dividend;
 pub mod holding;
 pub mod import_export;
 pub mod option;
