@@ -915,18 +915,19 @@ export interface StockPriceInput {
 }
 
 // --- Dividend analysis ---
+// Field names match the backend's camelCase serialization.
 
 export interface AccountDividend {
-  account_id: string;
-  account_name: string;
+  accountId: string;
+  accountName: string;
   total: number;
 }
 
 export interface DividendRow {
   symbol: string;
   name: string;
-  /** [account_id, amount][] — amounts in the market's native currency. */
-  per_account: [string, number][];
+  /** [accountId, amount][] — amounts in the market's native currency. */
+  perAccount: [string, number][];
   total: number;
 }
 
@@ -941,6 +942,6 @@ export interface MarketDividend {
 export interface DividendAnalysis {
   year: number;
   markets: MarketDividend[];
-  grand_total: number;
+  grandTotal: number;
 }
 

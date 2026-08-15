@@ -194,7 +194,7 @@ export default function DividendsPage() {
 }
 
 /** One market's dividend table: row = company, column = account + 合计. */
-function MarketTable({ market }: { market: MarketDividend }) {
+export function MarketTable({ market }: { market: MarketDividend }) {
   const currencyCode = marketCurrency[market.market]?.code ?? "USD";
   const symbol = marketCurrency[market.market]?.symbol ?? "$";
   const label = marketCurrency[market.market]?.label ?? market.market;
@@ -218,18 +218,21 @@ function MarketTable({ market }: { market: MarketDividend }) {
         ),
       },
       ...market.accounts.map((a) => ({
-        title: a.account_name,
-        dataIndex: "per_account",
-        key: a.account_id,
+        title: a.accountName,
+        dataIndex: "perAccount",
+        key: a.accountId,
         align: "right" as const,
         width: 140,
-        render: (_: unknown, row: { per_account: [string, number][] }) => {
-          const amount = row.per_account.find(([id]) => id === a.account_id)?.[1] ?? 0;
+        render: (_: unknown, row: { perAccount: [string, number][] }) => {
+          const entry = (Array.isArray(row.perAccount) ? row.perAccount : []).find(
+            (e) => Array.isArray(e) && e[0] === a.accountId
+          );
+          const amount = typeof entry?.[1] === "number" ? entry[1] : 0;
           return amount !== 0 ? fmt(amount, symbol) : "0.00";
         },
       })),
       {
-        title: "合计",
+        title: "小计",
         dataIndex: "total",
         key: "total",
         align: "right" as const,
@@ -249,25 +252,33 @@ function MarketTable({ market }: { market: MarketDividend }) {
     [market.rows]
   );
 
-  // Footer row: per-account totals + company total.
-  const footer = () => {
-    const acctTotals = market.accounts.map(
-      (a) => market.rows.reduce((s, r) => s + (r.per_account.find(([id]) => id === a.account_id)?.[1] ?? 0), 0)
-    );
+  // Summary row (via Table.summary so it aligns with the columns): label +
+  // per-account totals + the market total under the 小计 column.
+  const summary = () => {
+    const acctTotals = market.accounts.map((a) => {
+      let sum = 0;
+      for (const r of market.rows) {
+        const found = (Array.isArray(r.perAccount) ? r.perAccount : []).find(
+          (entry) => Array.isArray(entry) && entry[0] === a.accountId
+        );
+        sum += typeof found?.[1] === "number" ? found[1] : 0;
+      }
+      return sum;
+    });
     return (
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <Text strong>合计</Text>
-        <div style={{ display: "flex", gap: 16 }}>
-          {acctTotals.map((t, i) => (
-            <Text strong key={i} style={{ width: 140, textAlign: "right", display: "inline-block" }}>
-              {fmt(t, symbol)}
-            </Text>
-          ))}
-          <Text strong style={{ width: 140, textAlign: "right", display: "inline-block" }}>
-            {fmt(market.total, symbol)}
-          </Text>
-        </div>
-      </div>
+      <Table.Summary.Row>
+        <Table.Summary.Cell index={0} colSpan={1}>
+          <Text strong>合计</Text>
+        </Table.Summary.Cell>
+        {acctTotals.map((t, i) => (
+          <Table.Summary.Cell key={i} index={i + 1} align="right">
+            <Text strong>{fmt(t, symbol)}</Text>
+          </Table.Summary.Cell>
+        ))}
+        <Table.Summary.Cell index={acctTotals.length + 1} align="right">
+          <Text strong>{fmt(market.total, symbol)}</Text>
+        </Table.Summary.Cell>
+      </Table.Summary.Row>
     );
   };
 
@@ -280,7 +291,7 @@ function MarketTable({ market }: { market: MarketDividend }) {
         size="small"
         pagination={false}
         scroll={{ x: "max-content" }}
-        footer={footer}
+        summary={summary}
         bordered
       />
     </Card>

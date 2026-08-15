@@ -1,8 +1,33 @@
-import { useEffect } from "react";
+import { Component, useEffect, type ReactNode } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Alert } from "antd";
+
+/** Renders a readable error instead of a silent white screen when a page
+ *  throws during render. */
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: unknown) {
+    console.error("[ErrorBoundary]", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, color: "#cf1322" }}>
+          <h3>页面渲染出错</h3>
+          <pre style={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 12 }}>
+            {this.state.error.stack || String(this.state.error)}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { useQuoteStore } from "./stores/quoteStore";
 import MainLayout from "./components/Layout/MainLayout";
 import DashboardPage from "./pages/Dashboard";
@@ -106,7 +131,8 @@ function App() {
         </div>
       )}
       <MainLayout>
-        <Routes>
+        <ErrorBoundary>
+          <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/statistics" element={<StatisticsPage />} />
@@ -126,6 +152,7 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
       <Route path="/ai-assistant" element={<AiAssistantPage />} />
         </Routes>
+        </ErrorBoundary>
       </MainLayout>
     </>
   );
