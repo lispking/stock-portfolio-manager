@@ -9,7 +9,6 @@ import DashboardPage from "./pages/Dashboard";
 import AccountsPage from "./pages/Accounts";
 import HoldingsPage from "./pages/Holdings";
 import TransactionsPage from "./pages/Transactions";
-import CategoriesPage from "./pages/Categories";
 import StatisticsPage from "./pages/Statistics";
 import PerformancePage from "./pages/Performance";
 import QuarterlyPage from "./pages/Quarterly";
@@ -114,7 +113,6 @@ function App() {
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/holdings" element={<HoldingsPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
-          <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/quarterly" element={<QuarterlyPage />} />
           <Route path="/quarterly/compare" element={<QuarterComparisonPage />} />
           <Route path="/quarterly/trends" element={<TrendsPage />} />

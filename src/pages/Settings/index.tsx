@@ -4,6 +4,7 @@ import AIPage from "../AI";
 import GeneralSettings from "./GeneralSettings";
 import StockSplitSettings from "./StockSplitSettings";
 import BackupSettings from "./BackupSettings";
+import CategoriesPage from "../Categories";
 
 const { Title } = Typography;
 
@@ -13,6 +14,11 @@ export default function SettingsPage() {
       key: "general",
       label: "⚙️ 通用设置",
       children: <GeneralSettings />,
+    },
+    {
+      key: "categories",
+      label: "🏷️ 投资类别",
+      children: <CategoriesPage />,
     },
     {
       key: "stockSplits",

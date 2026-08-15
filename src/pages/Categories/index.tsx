@@ -134,7 +134,7 @@ export default function CategoriesPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <Title level={2} className="!mb-0">
+        <Title level={4} className="!mb-0">
           投资类别管理
         </Title>
         <Button
