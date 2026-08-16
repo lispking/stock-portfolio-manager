@@ -484,3 +484,22 @@ body {
   font-size: 12.5px;
 }
 
+/* Overview per-stock detail: the expanded account sub-table.
+   Strip the expanded cell's own padding (4px vertical, 16px horizontal) so
+   the sub-table sits flush; ml-8 on the sub-table provides the indent. */
+.account-detail-table .ant-table-expanded-row > td {
+  padding: 0 !important;
+}
+
+/* Square corners on the sub-table itself (antd leaves rounded corners on the
+   table, container, header and first/last cells). */
+.account-sub-table .ant-table,
+.account-sub-table .ant-table-container,
+.account-sub-table .ant-table-thead > tr > th:first-child,
+.account-sub-table .ant-table-thead > tr > th:last-child,
+.account-sub-table .ant-table-tbody > tr:last-child > td:first-child,
+.account-sub-table .ant-table-tbody > tr:last-child > td:last-child {
+  border-radius: 0;
+}
+
+

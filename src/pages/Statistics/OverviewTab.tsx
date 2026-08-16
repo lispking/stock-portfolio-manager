@@ -33,8 +33,9 @@ interface AggregatedStock {
   market_value_base: number;
   pnl: number;
   pnl_percent: number | null;
-  /** Per-account breakdown for the expandable sub-table. */
-  children?: AccountHoldingRow[];
+  /** Per-account breakdown for the expandable sub-table. Not named
+   *  "children" because antd Table treats that field as nested row data. */
+  accountRows?: AccountHoldingRow[];
 }
 
 interface AccountHoldingRow {
@@ -180,7 +181,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
     return Array.from(map.values())
       .map((v) => {
         // Build per-account rows, sorted by market value descending.
-        const children: AccountHoldingRow[] = Array.from(v.byAccount.entries())
+        const accountRows: AccountHoldingRow[] = Array.from(v.byAccount.entries())
           .map(([accountId, a]) => {
             const acctPnlPercent =
               a.cost_value > 0 ? (a.pnl / a.cost_value) * 100 : null;
@@ -213,7 +214,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
           market_value_base: v.market_value_base,
           pnl: v.pnl,
           pnl_percent: v.cost_value > 0 ? (v.pnl / v.cost_value) * 100 : null,
-          children,
+          accountRows,
         };
       })
       .sort((a, b) => b.market_value_base - a.market_value_base);
@@ -310,11 +311,11 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
       sorter: (a, b) => a.pnl - b.pnl,
       render: (pnl: number, record: AggregatedStock) => {
         const sym = currencySymbol[record.currency] ?? "";
+        const sign = pnl >= 0 ? "+" : "-";
         return (
-          <span style={{ color: pnlColor(pnl) }}>
-            {pnl >= 0 ? "+" : "-"}
-            {sym}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
+          <Text type={pnl >= 0 ? "success" : "danger"}>
+            {sign}{sym}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Text>
         );
       },
       align: "right" as const,
@@ -326,17 +327,17 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
       key: "pnl_percent",
       render: (pnl: number | null) =>
         pnl != null ? (
-          <span style={{ color: pnlColor(pnl) }}>
+          <Text type={pnl >= 0 ? "success" : "danger"}>
             {pnl >= 0 ? "+" : ""}
             {pnl.toFixed(2)}%
-          </span>
+          </Text>
         ) : (
           <span>-</span>
         ),
       align: "right" as const,
       width: 100,
     },
-  ], [aggregatedStocks, pnlColor]);
+  ], [aggregatedStocks]);
 
   // Sub-table columns: per-account breakdown of one stock.
   const accountDetailColumns: ColumnsType<AccountHoldingRow> = useMemo(
@@ -391,11 +392,11 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         width: 130,
         render: (pnl: number, record: AccountHoldingRow) => {
           const sym = currencySymbol[record.currency] ?? "";
+          const sign = pnl >= 0 ? "+" : "-";
           return (
-            <span style={{ color: pnlColor(pnl) }}>
-              {pnl >= 0 ? "+" : "-"}
-              {sym}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+            <Text type={pnl >= 0 ? "success" : "danger"}>
+              {sign}{sym}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
           );
         },
       },
@@ -407,16 +408,16 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         width: 100,
         render: (pnl: number | null) =>
           pnl != null ? (
-            <span style={{ color: pnlColor(pnl) }}>
+            <Text type={pnl >= 0 ? "success" : "danger"}>
               {pnl >= 0 ? "+" : ""}
               {pnl.toFixed(2)}%
-            </span>
+            </Text>
           ) : (
             <span>-</span>
           ),
       },
     ],
-    [pnlColor]
+    []
   );
 
   if (loading && !overview) {
@@ -532,21 +533,25 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
                 dataSource={aggregatedStocks}
                 rowKey="symbol"
                 size="small"
+                className="account-detail-table"
                 scroll={{ x: 1200 }}
                 pagination={{ pageSize: 20, showSizeChanger: true }}
-                bordered
                 expandable={{
                   expandedRowRender: (record: AggregatedStock) => (
+                    // ml-8 indentation like the quarterly sub-table. The
+                    // account-detail-table class (on the parent) lets CSS
+                    // strip the expanded cell's padding, and account-sub-table
+                    // forces square corners on this table.
                     <Table
                       columns={accountDetailColumns}
-                      dataSource={record.children ?? []}
+                      dataSource={record.accountRows ?? []}
                       rowKey="key"
                       size="small"
                       pagination={false}
-                      scroll={{ x: 900 }}
+                      className="ml-8 account-sub-table"
                     />
                   ),
-                  rowExpandable: (record: AggregatedStock) => (record.children?.length ?? 0) > 0,
+                  rowExpandable: (record: AggregatedStock) => (record.accountRows?.length ?? 0) > 0,
                 }}
               />
             </Card>
