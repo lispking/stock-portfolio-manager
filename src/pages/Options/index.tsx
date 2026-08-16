@@ -25,6 +25,7 @@ import {
   StockOutlined,
   PlusOutlined,
   MinusOutlined,
+  FundOutlined,
 } from "@ant-design/icons";
 import { useAccountStore } from "../../stores/accountStore";
 import { useOptionStore } from "../../stores/optionStore";
@@ -822,7 +823,7 @@ export default function OptionsPage() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          期权管理
+          <FundOutlined style={{ color: "#722ed1" }} /> 期权管理
         </Title>
         <Space>
           <Select

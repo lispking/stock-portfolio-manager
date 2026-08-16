@@ -19,7 +19,7 @@ import {
   Row,
   Col,
 } from "antd";
-import { PlusOutlined, ReloadOutlined, SyncOutlined, FilterOutlined, DollarOutlined, UploadOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, SyncOutlined, FilterOutlined, DollarOutlined, UploadOutlined, StockOutlined } from "@ant-design/icons";
 import ImportHoldingFromCsvModal from "./ImportHoldingFromCsvModal";
 import ImportHoldingFromIbCsvModal from "./ImportHoldingFromIbCsvModal";
 import ImportHoldingFromMoomooCsvModal from "./ImportHoldingFromMoomooCsvModal";
@@ -713,7 +713,7 @@ export default function HoldingsPage() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <Title level={2} className="!mb-0">
-          持仓管理
+          <StockOutlined style={{ color: "#52c41a" }} /> 持仓管理
         </Title>
         <Space>
           <Space>

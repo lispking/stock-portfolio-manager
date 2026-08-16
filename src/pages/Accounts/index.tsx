@@ -11,7 +11,7 @@ import {
   Tag,
   message,
 } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, BankOutlined } from "@ant-design/icons";
 import { useAccountStore } from "../../stores/accountStore";
 import type { Account, Market } from "../../types";
 
@@ -139,7 +139,7 @@ export default function AccountsPage() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <Title level={2} className="!mb-0">
-          证券账户管理
+          <BankOutlined style={{ color: "#1677ff" }} /> 证券账户管理
         </Title>
         <Button
           type="primary"

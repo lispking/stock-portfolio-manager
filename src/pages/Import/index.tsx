@@ -18,6 +18,7 @@ import {
   UploadOutlined,
   DownloadOutlined,
   CheckCircleOutlined,
+  ImportOutlined,
 } from "@ant-design/icons";
 import { invoke } from "@tauri-apps/api/core";
 import type { ImportPreview, ImportResult, ExportFilters, ImportOptionsResult } from "../../types";
@@ -191,7 +192,9 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-6">
-      <Title level={2}>数据导入导出</Title>
+      <Title level={2}>
+        <ImportOutlined style={{ color: "#13c2c2" }} /> 数据导入导出
+      </Title>
 
       {/* Export Section */}
       <Card title={<><DownloadOutlined /> 数据导出</>}>

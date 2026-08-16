@@ -18,7 +18,7 @@ import {
   Col,
   Tooltip,
 } from "antd";
-import { PlusOutlined, EditOutlined, FilterOutlined, CameraOutlined, FileTextOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, FilterOutlined, CameraOutlined, FileTextOutlined, SwapOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { invoke } from "@tauri-apps/api/core";
 import { useTransactionStore } from "../../stores/transactionStore";
@@ -433,7 +433,7 @@ export default function TransactionsPage() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <Title level={2} className="!mb-0">
-          交易记录
+          <SwapOutlined style={{ color: "#fa8c16" }} /> 交易记录
         </Title>
         <Space>
           {filterAccountId && (() => {

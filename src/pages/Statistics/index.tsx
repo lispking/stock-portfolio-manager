@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Typography, Tabs, Button, Select } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined, BarChartOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useStatisticsStore } from "../../stores/dashboardStore";
 import { useAccountStore } from "../../stores/accountStore";
@@ -172,7 +172,7 @@ export default function StatisticsPage() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <Title level={2} className="!mb-0">
-          📈 统计分析
+          <BarChartOutlined style={{ color: "#1677ff" }} /> 统计分析
         </Title>
         <div className="flex items-center gap-2">
           <Button

@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Typography, Select, Divider, Card, Row, Col, Statistic, Spin, Alert, Button, Tooltip } from "antd";
-import { ReloadOutlined, SyncOutlined } from "@ant-design/icons";
+import { ReloadOutlined, SyncOutlined, DashboardOutlined } from "@ant-design/icons";
 import { useDashboardStore } from "../../stores/dashboardStore";
 import { useExchangeRateStore } from "../../stores/exchangeRateStore";
 import { useQuoteStore } from "../../stores/quoteStore";
@@ -53,7 +53,7 @@ export default function DashboardPage() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <Title level={2} className="!mb-0">
-          📊 仪表盘
+          <DashboardOutlined style={{ color: "#13c2c2" }} /> 仪表盘
         </Title>
         <div className="flex items-center gap-2">
           <Tooltip title={lastUpdatedAt ? `上次更新: ${dayjs(lastUpdatedAt).format("HH:mm:ss")}` : "点击刷新行情"}>

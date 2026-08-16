@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { Button, Card, Col, Divider, Row, Select, Space, Typography } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined, LineChartOutlined } from "@ant-design/icons";
 import { usePerformanceStore } from "../../stores/performanceStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { useExchangeRateStore } from "../../stores/exchangeRateStore";
@@ -126,7 +126,7 @@ export default function PerformancePage() {
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <Title level={2} className="!mb-0">
-          📊 绩效分析
+          <LineChartOutlined style={{ color: "#52c41a" }} /> 绩效分析
         </Title>
         <div className="flex flex-col items-end gap-1">
           <Space>

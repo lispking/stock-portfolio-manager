@@ -164,7 +164,7 @@ export default function QuarterlyPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <Title level={2} className="!mb-0">
-          📅 季度分析
+          <CalendarOutlined style={{ color: "#722ed1" }} /> 季度分析
         </Title>
         <Space>
           <Button
