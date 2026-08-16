@@ -36,6 +36,13 @@ import type {
 
 const { Title, Text } = Typography;
 
+/** Market → default currency (accounts have no explicit currency field). */
+const marketCurrencyMap: Record<string, string> = {
+  US: "USD",
+  CN: "CNY",
+  HK: "HKD",
+};
+
 export default function OptionsPage() {
   const { accounts, fetchAccounts } = useAccountStore();
   const {
@@ -62,6 +69,12 @@ export default function OptionsPage() {
 
   const selectedAccountName = useMemo(() => {
     return accounts.find((a) => a.id === selectedAccountId)?.name || "";
+  }, [accounts, selectedAccountId]);
+
+  // Default currency of the selected account (derived from its market).
+  const selectedAccountCurrency = useMemo(() => {
+    const acct = accounts.find((a) => a.id === selectedAccountId);
+    return acct ? marketCurrencyMap[acct.market] ?? "" : "";
   }, [accounts, selectedAccountId]);
 
   useEffect(() => {
@@ -914,11 +927,18 @@ export default function OptionsPage() {
           activeKey={activeTab}
           onChange={setActiveTab}
           tabBarExtraContent={
-            latestTradeTime ? (
-              <Text type="secondary" style={{ paddingRight: 8 }}>
-                最新交易时间：{latestTradeTime.substring(0, 10)}
-              </Text>
-            ) : null
+            <Space size="large">
+              {selectedAccountCurrency && (
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  货币单位：{selectedAccountCurrency}
+                </Text>
+              )}
+              {latestTradeTime && (
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  最新交易时间：{latestTradeTime.substring(0, 10)}
+                </Text>
+              )}
+            </Space>
           }
           items={[
             {
