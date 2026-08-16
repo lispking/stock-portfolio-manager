@@ -38,6 +38,22 @@ interface AggregatedStock {
   pnl: number;
   pnl_percent: number | null;
   _totalMv: number;
+  /** Per-account breakdown for the expandable sub-table. Not named
+   *  "children" because antd Table treats that field as nested row data. */
+  accountRows?: AccountHoldingRow[];
+}
+
+interface AccountHoldingRow {
+  key: string;
+  accountName: string;
+  shares: number;
+  avg_cost: number;
+  market_value: number;
+  market_value_usd: number;
+  position_pct: number;
+  pnl: number;
+  pnl_percent: number | null;
+  currency: string;
 }
 
 interface StockAccumulator {
@@ -50,6 +66,15 @@ interface StockAccumulator {
   name: string;
   category_name: string;
   category_color: string;
+  byAccount: Map<string, {
+    shares: number;
+    cost_value: number;
+    market_value: number;
+    market_value_usd: number;
+    pnl: number;
+    currency: string;
+  }>;
+  accountNames: Map<string, string>;
 }
 
 export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
@@ -77,7 +102,43 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         existing.pnl += h.pnl;
         // All rows for the same symbol share the same live quote; take the last seen.
         existing.current_price = h.current_price;
+        // Accumulate per-account entry.
+        const acct = existing.byAccount.get(h.account_id);
+        if (acct) {
+          acct.shares += h.shares;
+          acct.cost_value += h.cost_value;
+          acct.market_value += h.market_value;
+          acct.market_value_usd += h.market_value_usd;
+          acct.pnl += h.pnl;
+        } else {
+          existing.byAccount.set(h.account_id, {
+            shares: h.shares,
+            cost_value: h.cost_value,
+            market_value: h.market_value,
+            market_value_usd: h.market_value_usd,
+            pnl: h.pnl,
+            currency: h.currency,
+          });
+          existing.accountNames.set(h.account_id, h.account_name);
+        }
       } else {
+        const byAccount = new Map<string, {
+          shares: number;
+          cost_value: number;
+          market_value: number;
+          market_value_usd: number;
+          pnl: number;
+          currency: string;
+        }>();
+        byAccount.set(h.account_id, {
+          shares: h.shares,
+          cost_value: h.cost_value,
+          market_value: h.market_value,
+          market_value_usd: h.market_value_usd,
+          pnl: h.pnl,
+          currency: h.currency,
+        });
+        const accountNames = new Map<string, string>([[h.account_id, h.account_name]]);
         map.set(h.symbol, {
           shares: h.shares,
           cost_value: h.cost_value,
@@ -88,24 +149,45 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
           name: h.name,
           category_name: h.category_name,
           category_color: h.category_color,
+          byAccount,
+          accountNames,
         });
       }
     }
     const totalMv = Array.from(map.values()).reduce((s, v) => s + v.market_value_usd, 0);
-    return Array.from(map.entries()).map(([symbol, v]) => ({
-      symbol,
-      name: v.name,
-      category_name: v.category_name,
-      category_color: v.category_color,
-      shares: v.shares,
-      avg_cost: v.shares > 0 ? v.cost_value / v.shares : 0,
-      current_price: v.current_price,
-      market_value: v.market_value,
-      market_value_usd: v.market_value_usd,
-      pnl: v.pnl,
-      pnl_percent: v.cost_value > 0 ? (v.pnl / v.cost_value) * 100 : null,
-      _totalMv: totalMv,
-    }));
+    return Array.from(map.entries()).map(([symbol, v]) => {
+      // Build per-account rows, sorted by USD market value descending.
+      const accountRows: AccountHoldingRow[] = Array.from(v.byAccount.entries())
+        .map(([accountId, a]) => ({
+          key: accountId,
+          accountName: v.accountNames.get(accountId) ?? accountId,
+          shares: a.shares,
+          avg_cost: a.shares > 0 ? a.cost_value / a.shares : 0,
+          market_value: a.market_value,
+          market_value_usd: a.market_value_usd,
+          position_pct: totalMv > 0 ? (a.market_value_usd / totalMv) * 100 : 0,
+          pnl: a.pnl,
+          pnl_percent: a.cost_value > 0 ? (a.pnl / a.cost_value) * 100 : null,
+          currency: a.currency,
+        }))
+        .sort((a, b) => b.market_value_usd - a.market_value_usd);
+
+      return {
+        symbol,
+        name: v.name,
+        category_name: v.category_name,
+        category_color: v.category_color,
+        shares: v.shares,
+        avg_cost: v.shares > 0 ? v.cost_value / v.shares : 0,
+        current_price: v.current_price,
+        market_value: v.market_value,
+        market_value_usd: v.market_value_usd,
+        pnl: v.pnl,
+        pnl_percent: v.cost_value > 0 ? (v.pnl / v.cost_value) * 100 : null,
+        _totalMv: totalMv,
+        accountRows,
+      };
+    });
   }, [stats]);
 
   const stockColumns: ColumnsType<AggregatedStock> = useMemo(() => [
@@ -192,10 +274,10 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
       key: "pnl",
       sorter: (a, b) => a.pnl - b.pnl,
       render: (pnl: number) => (
-        <span style={{ color: pnlColor(pnl) }}>
+        <Text type={pnl >= 0 ? "success" : "danger"}>
           {pnl >= 0 ? "+" : "-"}
           {currencySymbol}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
+        </Text>
       ),
       align: "right" as const,
       width: 140,
@@ -206,17 +288,98 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
       key: "pnl_percent",
       render: (pnl: number | null) =>
         pnl != null ? (
-          <span style={{ color: pnlColor(pnl) }}>
+          <Text type={pnl >= 0 ? "success" : "danger"}>
             {pnl >= 0 ? "+" : ""}
             {pnl.toFixed(2)}%
-          </span>
+          </Text>
         ) : (
           <span>-</span>
         ),
       align: "right" as const,
       width: 100,
     },
-  ], [currencySymbol, pnlColor]);
+  ], [currencySymbol]);
+
+  // Sub-table columns: per-account breakdown of one stock.
+  const accountDetailColumns: ColumnsType<AccountHoldingRow> = useMemo(
+    () => [
+      {
+        title: "账户",
+        dataIndex: "accountName",
+        key: "accountName",
+        width: 160,
+      },
+      {
+        title: "持仓数量",
+        dataIndex: "shares",
+        key: "shares",
+        align: "right" as const,
+        width: 110,
+        render: (shares: number) => shares.toLocaleString(),
+      },
+      {
+        title: "均价",
+        dataIndex: "avg_cost",
+        key: "avg_cost",
+        align: "right" as const,
+        width: 100,
+        render: (price: number) =>
+          price.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
+      },
+      {
+        title: "市值",
+        dataIndex: "market_value",
+        key: "market_value",
+        align: "right" as const,
+        width: 130,
+        render: (value: number, record: AccountHoldingRow) => {
+          const sym = marketCurrency[record.currency]?.symbol ?? "$";
+          return `${sym}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        },
+      },
+      {
+        title: "仓位",
+        dataIndex: "position_pct",
+        key: "position_pct",
+        align: "right" as const,
+        width: 90,
+        render: (pct: number) => `${pct.toFixed(2)}%`,
+      },
+      {
+        title: "盈亏金额",
+        dataIndex: "pnl",
+        key: "pnl",
+        align: "right" as const,
+        width: 130,
+        render: (pnl: number, record: AccountHoldingRow) => {
+          const sym = marketCurrency[record.currency]?.symbol ?? "$";
+          const sign = pnl >= 0 ? "+" : "-";
+          return (
+            <Text type={pnl >= 0 ? "success" : "danger"}>
+              {sign}{sym}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+          );
+        },
+      },
+      {
+        title: "盈亏比例",
+        dataIndex: "pnl_percent",
+        key: "pnl_percent",
+        align: "right" as const,
+        width: 100,
+        render: (pnl: number | null) =>
+          pnl != null ? (
+            <Text type={pnl >= 0 ? "success" : "danger"}>
+              {pnl >= 0 ? "+" : ""}
+              {pnl.toFixed(2)}%
+            </Text>
+          ) : (
+            <span>-</span>
+          ),
+      },
+    ],
+    []
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -295,10 +458,26 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
               dataSource={aggregatedStocks}
               rowKey="symbol"
               loading={false}
-              scroll={{ x: 1100 }}
+              className="account-detail-table"
+              scroll={{ x: 1200 }}
               size="small"
               pagination={{ pageSize: 20, showSizeChanger: true }}
-              bordered
+              expandable={{
+                expandedRowRender: (record: AggregatedStock) => (
+                  // Same styling as the overview tab sub-table: ml-8 indent,
+                  // account-sub-table class strips expanded-cell padding and
+                  // forces square corners.
+                  <Table
+                    columns={accountDetailColumns}
+                    dataSource={record.accountRows ?? []}
+                    rowKey="key"
+                    size="small"
+                    pagination={false}
+                    className="ml-8 account-sub-table"
+                  />
+                ),
+                rowExpandable: (record: AggregatedStock) => (record.accountRows?.length ?? 0) > 0,
+              }}
             />
           </Card>
         </>
