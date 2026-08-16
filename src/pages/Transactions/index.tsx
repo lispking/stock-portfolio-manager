@@ -16,6 +16,7 @@ import {
   AutoComplete,
   Row,
   Col,
+  Tooltip,
 } from "antd";
 import { PlusOutlined, EditOutlined, FilterOutlined, CameraOutlined, FileTextOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -477,12 +478,14 @@ export default function TransactionsPage() {
               );
             }
             return (
-              <Button
-                icon={<FileTextOutlined />}
-                onClick={() => setCsvImportModalOpen(true)}
-              >
-                从CSV导入
-              </Button>
+              <Tooltip title="可以导入交易记录或分红记录">
+                <Button
+                  icon={<FileTextOutlined />}
+                  onClick={() => setCsvImportModalOpen(true)}
+                >
+                  从CSV导入
+                </Button>
+              </Tooltip>
             );
           })()}
           <Button
