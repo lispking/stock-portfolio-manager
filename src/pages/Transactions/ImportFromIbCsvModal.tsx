@@ -422,12 +422,31 @@ function formatSymbol(symbol: string, market: Market): string {
 
 /**
  * Split a single CSV line respecting double-quoted fields.
+ * Picks the delimiter (comma or tab) that appears most often outside quotes,
+ * so both comma-separated IB exports and tab-separated copies (e.g. pasted
+ * from Excel) are handled.
  */
 function splitCsvLine(line: string): string[] {
+  // Detect delimiter: count commas vs tabs outside quotes.
+  let commas = 0;
+  let tabs = 0;
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') i++;
+      else inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (ch === ",") commas++;
+      else if (ch === "\t") tabs++;
+    }
+  }
+  const delim = tabs > commas ? "\t" : ",";
+
+  // Split with the chosen delimiter.
   const result: string[] = [];
   let current = "";
-  let inQuotes = false;
-
+  inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
@@ -437,7 +456,7 @@ function splitCsvLine(line: string): string[] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (ch === "," && !inQuotes) {
+    } else if (ch === delim && !inQuotes) {
       result.push(current);
       current = "";
     } else {
