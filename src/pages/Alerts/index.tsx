@@ -145,7 +145,7 @@ export default function AlertsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Title level={2}>
-          <BellOutlined /> 价格提醒
+          <BellOutlined style={{ color: "#fa8c16" }} /> 价格提醒
         </Title>
         <Button
           type="primary"

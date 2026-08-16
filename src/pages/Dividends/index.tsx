@@ -112,7 +112,7 @@ export default function DividendsPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="flex justify-between items-center">
         <Title level={2} className="!mb-0">
-          <GiftOutlined /> 分红分析
+          <GiftOutlined style={{ color: "#f5222d" }} /> 分红分析
         </Title>
         <div style={{ display: "flex", gap: 12 }}>
           <Select

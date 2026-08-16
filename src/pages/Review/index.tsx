@@ -132,7 +132,7 @@ export default function ReviewPage() {
   return (
     <div className="space-y-6">
       <Title level={2}>
-        <HistoryOutlined /> 历史操作复盘
+        <HistoryOutlined style={{ color: "#1677ff" }} /> 历史操作复盘
       </Title>
 
       {/* Decision Statistics */}
