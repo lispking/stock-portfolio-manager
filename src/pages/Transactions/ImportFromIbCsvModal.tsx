@@ -35,7 +35,7 @@ function shareInputProps(market: Market) {
 interface EditableRow {
   key: string;
   selected: boolean;
-  transaction_type: string; // "BUY" | "SELL"
+  transaction_type: string; // "BUY" | "SELL" | "PAY"
   stock_name: string;       // editable display name (defaults to symbol)
   symbol: string;
   traded_at: string;        // ISO-8601
@@ -43,6 +43,7 @@ interface EditableRow {
   shares: number;
   total_amount: number;
   commission: number;
+  notes?: string;           // e.g. dividend per-share info
   lookingUp?: boolean;
   importOk?: boolean;
   importError?: string;
@@ -113,7 +114,118 @@ function parseIbCsv(text: string, market: Market): EditableRow[] {
     }
   }
 
+  // --- Layout C: IB dividend report — header "Date, Description, Amount" ---
+  // Description like "87(HK0087000532) Cash Dividend HKD 0.50 per Share
+  // (Ordinary Dividend)". Recognise Chinese equivalents too.
+  for (let i = 0; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i]).map((c) => c.trim());
+    if (cols.some((c) => c.toLowerCase() === "description")) {
+      const rows = parseDividend(lines, i, market);
+      if (rows.length > 0) return rows;
+    }
+  }
+
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// Layout C: IB cash dividend report
+// ---------------------------------------------------------------------------
+
+/** Detect the amount text of a dividend description and build a notes string
+ *  like "每股分红 HKD 0.50". Handles:
+ *   87(HK0087000532) Cash Dividend HKD 0.50 per Share (Ordinary Dividend)
+ *   1211 (CNE100000296) Cash Dividend HKD 0.41141 (Ordinary Dividend)
+ *   9992(KYG7170M1033) Cash Dividend HKD 2.7248 per Share (Ordinary Dividend)
+ *  Chinese variants: "现金股息 HKD 0.50 每股" / "每10股派 HKD 5.00" etc.
+ */
+function dividendNotes(desc: string): string {
+  const text = desc.trim();
+  // English: "Cash Dividend HKD 0.50 per Share" / "Cash Dividend HKD 0.41141"
+  // Chinese: "现金股息 HKD 0.50 每股" / "现金股利每股 HKD 0.50"
+  // Match the currency and the amount that follows it (the leading stock code
+  // like "87(HK...)" must NOT be treated as the per-share amount).
+  const currencyMatch = text.match(/HKD|CNY|USD|RMB|人民币|港元|港币/i);
+  const currency = currencyMatch?.[0].toUpperCase() ?? "HKD";
+  const amountMatch = text.match(
+    new RegExp(
+      `${currencyMatch ? currencyMatch[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "HKD"}\\s+([0-9]+(?:\\.[0-9]+)?)`
+    )
+  );
+  if (!amountMatch) return "";
+  const perShare = parseFloat(amountMatch[1]);
+  if (isNaN(perShare)) return "";
+  // Keep enough decimals for high-precision per-share amounts (e.g. 0.2207495).
+  let notes = `每股分红 ${currency} ${perShare.toFixed(8).replace(/\.?0+$/, "")}`;
+  // Mark bonus dividends (rewards/stock dividends) distinctly.
+  if (/(bonus\s+dividend|奖励分红|奖励股息|红股|送股|bonus\s*dividend)/i.test(text)) {
+    notes += "（奖励分红）";
+  }
+  return notes;
+}
+
+/** Parse a dividend report with header "Date, Description, Amount". */
+function parseDividend(lines: string[], headerLineIdx: number, market: Market): EditableRow[] {
+  const headerCols = splitCsvLine(lines[headerLineIdx]).map((c) => c.trim());
+  const col = (name: string) => headerCols.findIndex((c) => c.toLowerCase() === name.toLowerCase());
+
+  const iDate = col("Date");
+  const iDesc = col("Description");
+  const iAmount = col("Amount");
+  if (iDate === -1 || iDesc === -1 || iAmount === -1) return [];
+
+  const rows: EditableRow[] = [];
+  for (let i = headerLineIdx + 1; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i]);
+    if (cols.length < 3) continue;
+
+    const dateRaw = (cols[iDate] ?? "").trim();
+    const desc = (cols[iDesc] ?? "").trim();
+
+    // The Amount column may contain thousands separators ("140,000.00"),
+    // which splitCsvLine splits across fields. Rejoin the amount column and
+    // everything after it so parseNum sees the full number.
+    const amountRaw = cols
+      .slice(iAmount)
+      .join(",")
+      .trim();
+
+    // Skip Total / summary rows and non-dividend rows.
+    if (!dateRaw || !desc || desc.toLowerCase().startsWith("total")) continue;
+    // Only cash dividends (not e.g. "Stock Split" or empty descriptions).
+    if (!/(dividend|股息|股利|分红|interest|利息)/i.test(desc)) continue;
+
+    // Extract stock code from the leading "87(HK0087000532)" or "1211 (CNE...)".
+    const codeMatch = desc.match(/^([0-9A-Z.\-]+)\s*\(/);
+    if (!codeMatch) continue;
+    const rawCode = codeMatch[1].trim();
+    const symbol = formatSymbol(rawCode, market);
+    if (!symbol) continue;
+
+    const amount = parseNum(amountRaw);
+    if (isNaN(amount)) continue;
+
+    const traded_at = parseIbDateTime(dateRaw);
+    if (!traded_at) continue;
+
+    const notes = dividendNotes(desc);
+
+    rows.push({
+      key: String(i),
+      selected: true,
+      transaction_type: "PAY",
+      stock_name: symbol, // display only; name lookup will fill real name
+      symbol,
+      traded_at,
+      price: 0,
+      shares: 0,
+      total_amount: amount,
+      commission: 0,
+      notes,
+    });
+  }
+
+  return rows;
 }
 
 /** Layout A parser: rows are prefixed "Trades,Data,..." */
@@ -491,6 +603,7 @@ export default function ImportFromIbCsvModal({
           commission: r.commission,
           currency,
           tradedAt: new Date(r.traded_at).toISOString(),
+          notes: r.notes,
         });
         success++;
         updateRow(r.key, { importOk: true, importError: undefined });
@@ -557,6 +670,9 @@ export default function ImportFromIbCsvModal({
           <Select.Option value="SELL">
             <Tag color="red">卖出</Tag>
           </Select.Option>
+          <Select.Option value="PAY">
+            <Tag color="orange">分红</Tag>
+          </Select.Option>
         </Select>
       ),
     },
@@ -622,6 +738,7 @@ export default function ImportFromIbCsvModal({
           value={record.price}
           min={0}
           precision={4}
+          disabled={record.transaction_type === "PAY"}
           onChange={(v) => updateRow(record.key, { price: v ?? 0 })}
           style={{ width: 85 }}
         />
@@ -636,6 +753,7 @@ export default function ImportFromIbCsvModal({
           size="small"
           value={record.shares}
           {...shareInputProps(market)}
+          disabled={record.transaction_type === "PAY"}
           onChange={(v) => updateRow(record.key, { shares: v ?? 1 })}
           style={{ width: 85 }}
         />
