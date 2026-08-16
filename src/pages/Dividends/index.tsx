@@ -30,6 +30,13 @@ const currencyNames: Record<string, string> = {
   HKD: "港元",
 };
 
+/** Currency code → symbol (for the selected summary currency). */
+const currencySymbol: Record<string, string> = {
+  USD: "$",
+  CNY: "¥",
+  HKD: "HK$",
+};
+
 const CURRENCY_OPTIONS: Currency[] = ["CNY", "USD", "HKD"];
 
 function fmt(amount: number, symbol: string): string {
@@ -105,7 +112,7 @@ export default function DividendsPage() {
     return analysis.markets.reduce((s, m) => s + convertMarketTotal(m), 0);
   }, [analysis, convertMarketTotal]);
 
-  const baseSymbol = marketCurrency[baseCurrency]?.symbol ?? "$";
+  const baseSymbol = currencySymbol[baseCurrency] ?? "$";
   const baseName = currencyNames[baseCurrency] ?? baseCurrency;
 
   return (
