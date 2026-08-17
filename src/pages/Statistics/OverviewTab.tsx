@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Row, Col, Card, Statistic, Spin, Empty, Table, Tag, Typography } from "antd";
+import { useMemo, useState, useCallback } from "react";
+import { Row, Col, Card, Statistic, Spin, Empty, Table, Tag, Typography, Button } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import PieChart from "../../components/charts/PieChart";
 import BarChart from "../../components/charts/BarChart";
@@ -10,6 +10,7 @@ import { useQuoteStore } from "../../stores/quoteStore";
 import { useExchangeRateStore } from "../../stores/exchangeRateStore";
 import { useCategoryStore } from "../../stores/categoryStore";
 import { useAccountStore } from "../../stores/accountStore";
+import AccountStockTransactionsModal from "./AccountStockTransactionsModal";
 
 const { Text } = Typography;
 
@@ -41,6 +42,8 @@ interface AggregatedStock {
 interface AccountHoldingRow {
   key: string;
   accountName: string;
+  account_id: string;
+  symbol: string;
   shares: number;
   avg_cost: number;
   market_value: number;
@@ -188,6 +191,8 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
             return {
               key: accountId,
               accountName: accountNameMap.get(accountId) ?? accountId,
+              account_id: accountId,
+              symbol: v.symbol,
               shares: a.shares,
               avg_cost: a.shares > 0 ? a.cost_value / a.shares : 0,
               market_value: a.market_value,
@@ -339,6 +344,23 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
     },
   ], [aggregatedStocks]);
 
+  // State for the per-account transaction detail modal.
+  const [txnModal, setTxnModal] = useState<{
+    accountId: string;
+    accountName: string;
+    symbol: string;
+    stockName: string;
+  } | null>(null);
+
+  const handleShowTransactions = useCallback((record: AccountHoldingRow) => {
+    setTxnModal({
+      accountId: record.account_id,
+      accountName: record.accountName,
+      symbol: record.symbol,
+      stockName: record.symbol,
+    });
+  }, []);
+
   // Sub-table columns: per-account breakdown of one stock.
   const accountDetailColumns: ColumnsType<AccountHoldingRow> = useMemo(
     () => [
@@ -416,8 +438,23 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
             <span>-</span>
           ),
       },
+      {
+        title: "交易",
+        key: "transactions",
+        width: 80,
+        align: "center" as const,
+        render: (_: unknown, record: AccountHoldingRow) => (
+          <Button
+            type="link"
+            size="small"
+            onClick={() => handleShowTransactions(record)}
+          >
+            明细
+          </Button>
+        ),
+      },
     ],
-    []
+    [handleShowTransactions]
   );
 
   if (loading && !overview) {
@@ -557,6 +594,17 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
             </Card>
           </Col>
         </Row>
+      )}
+
+      {txnModal && (
+        <AccountStockTransactionsModal
+          open
+          accountId={txnModal.accountId}
+          accountName={txnModal.accountName}
+          symbol={txnModal.symbol}
+          stockName={txnModal.stockName}
+          onClose={() => setTxnModal(null)}
+        />
       )}
     </div>
   );
