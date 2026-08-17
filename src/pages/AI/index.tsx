@@ -117,6 +117,14 @@ const PROVIDERS: ProviderOption[] = [
     needs_key: true,
     key_placeholder: "sk-...",
   },
+  {
+    value: "anthropic",
+    label: "Anthropic（Claude）",
+    hint: "Claude 官方 API，使用 Anthropic Messages 协议",
+    default_base_url: "https://api.anthropic.com",
+    needs_key: true,
+    key_placeholder: "sk-ant-...",
+  },
 ];
 
 function providerOf(value: string): ProviderOption | undefined {

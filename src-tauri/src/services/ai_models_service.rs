@@ -46,19 +46,32 @@ pub(crate) fn resolve_base_url(provider: &str, user_base: Option<&str>) -> Resul
         "glm" | "zhipu" => Ok("https://open.bigmodel.cn/api/paas/v4".to_string()),
         "mimo" | "xiaomi" => Ok("https://api.xiaomimimo.com/v1".to_string()),
         "deepseek" => Ok("https://api.deepseek.com".to_string()),
+        "anthropic" => Ok("https://api.anthropic.com".to_string()),
         other => Err(format!("未知的服务商：{other}，请填写 Base URL")),
     }
 }
 
 /// Fetch models from a provider via its OpenAI-compatible `/models` endpoint.
+/// Anthropic uses `/v1/models` with `x-api-key` auth instead of Bearer.
 pub async fn fetch_models(params: FetchModelsParams) -> Result<Vec<AiModelInfo>, String> {
     let base = resolve_base_url(&params.provider, params.base_url.as_deref())?;
-    let url = format!("{base}/models");
+    let is_anthropic = params.provider.eq_ignore_ascii_case("anthropic");
+    let url = if is_anthropic {
+        // Anthropic's models endpoint lives under /v1; base is api.anthropic.com
+        format!("{base}/v1/models")
+    } else {
+        format!("{base}/models")
+    };
 
     let client = http_client::general_client();
     let mut req = client.get(&url);
     if !params.api_key.is_empty() {
-        req = req.bearer_auth(&params.api_key);
+        if is_anthropic {
+            req = req.header("x-api-key", &params.api_key);
+            req = req.header("anthropic-version", "2023-06-01");
+        } else {
+            req = req.bearer_auth(&params.api_key);
+        }
     }
 
     let resp = req.send().await.map_err(|e| format!("请求失败：{e}"))?;

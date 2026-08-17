@@ -646,7 +646,8 @@ export type AiProvider =
   | "kimi"
   | "glm"
   | "mimo"
-  | "deepseek";
+  | "deepseek"
+  | "anthropic";
 
 export interface AiModelInfo {
   id: string;

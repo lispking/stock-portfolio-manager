@@ -354,9 +354,8 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         key: "market_value",
         align: "right" as const,
         width: 140,
-        render: (value: number, record: AccountHoldingRow) => {
-          return `${currencySymbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        },
+        render: (value: number) =>
+          `${currencySymbol}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       },
       {
         title: "仓位",
@@ -372,7 +371,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         key: "pnl",
         align: "right" as const,
         width: 140,
-        render: (pnl: number, record: AccountHoldingRow) => {
+        render: (pnl: number) => {
           const sign = pnl >= 0 ? "+" : "-";
           return (
             <Text type={pnl >= 0 ? "success" : "danger"}>
