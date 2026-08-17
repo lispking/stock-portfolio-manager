@@ -375,7 +375,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         dataIndex: "shares",
         key: "shares",
         align: "right" as const,
-        width: 110,
+        width: 100,
         render: (shares: number) => shares.toLocaleString(),
       },
       {
@@ -392,7 +392,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         dataIndex: "market_value",
         key: "market_value",
         align: "right" as const,
-        width: 130,
+        width: 140,
         render: (value: number, record: AccountHoldingRow) => {
           const sym = currencySymbol[record.currency] ?? "";
           return `${sym}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -411,7 +411,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         dataIndex: "pnl",
         key: "pnl",
         align: "right" as const,
-        width: 130,
+        width: 140,
         render: (pnl: number, record: AccountHoldingRow) => {
           const sym = currencySymbol[record.currency] ?? "";
           const sign = pnl >= 0 ? "+" : "-";
