@@ -279,10 +279,10 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
       key: "pnl",
       sorter: (a, b) => a.pnl - b.pnl,
       render: (pnl: number) => (
-        <Text type={pnl >= 0 ? "success" : "danger"}>
+        <span style={{ color: pnlColor(pnl) }}>
           {pnl >= 0 ? "+" : "-"}
           {currencySymbol}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </Text>
+        </span>
       ),
       align: "right" as const,
       width: 140,
@@ -293,17 +293,17 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
       key: "pnl_percent",
       render: (pnl: number | null) =>
         pnl != null ? (
-          <Text type={pnl >= 0 ? "success" : "danger"}>
+          <span style={{ color: pnlColor(pnl) }}>
             {pnl >= 0 ? "+" : ""}
             {pnl.toFixed(2)}%
-          </Text>
+          </span>
         ) : (
           <span>-</span>
         ),
       align: "right" as const,
       width: 100,
     },
-  ], [currencySymbol]);
+  ], [currencySymbol, pnlColor]);
 
   // State for the per-account transaction detail modal.
   const [txnModal, setTxnModal] = useState<{
@@ -374,9 +374,9 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         render: (pnl: number) => {
           const sign = pnl >= 0 ? "+" : "-";
           return (
-            <Text type={pnl >= 0 ? "success" : "danger"}>
+            <span style={{ color: pnlColor(pnl) }}>
               {sign}{currencySymbol}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
+            </span>
           );
         },
       },
@@ -388,10 +388,10 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         width: 100,
         render: (pnl: number | null) =>
           pnl != null ? (
-            <Text type={pnl >= 0 ? "success" : "danger"}>
+            <span style={{ color: pnlColor(pnl) }}>
               {pnl >= 0 ? "+" : ""}
               {pnl.toFixed(2)}%
-            </Text>
+            </span>
           ) : (
             <span>-</span>
           ),
@@ -412,7 +412,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         ),
       },
     ],
-    [handleShowTransactions]
+    [handleShowTransactions, pnlColor]
   );
 
   return (

@@ -318,9 +318,9 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         const sym = currencySymbol[record.currency] ?? "";
         const sign = pnl >= 0 ? "+" : "-";
         return (
-          <Text type={pnl >= 0 ? "success" : "danger"}>
+          <span style={{ color: pnlColor(pnl) }}>
             {sign}{sym}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
+          </span>
         );
       },
       align: "right" as const,
@@ -332,17 +332,17 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
       key: "pnl_percent",
       render: (pnl: number | null) =>
         pnl != null ? (
-          <Text type={pnl >= 0 ? "success" : "danger"}>
+          <span style={{ color: pnlColor(pnl) }}>
             {pnl >= 0 ? "+" : ""}
             {pnl.toFixed(2)}%
-          </Text>
+          </span>
         ) : (
           <span>-</span>
         ),
       align: "right" as const,
       width: 100,
     },
-  ], [aggregatedStocks]);
+  ], [aggregatedStocks, pnlColor]);
 
   // State for the per-account transaction detail modal.
   const [txnModal, setTxnModal] = useState<{
@@ -416,9 +416,9 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
           const sym = currencySymbol[record.currency] ?? "";
           const sign = pnl >= 0 ? "+" : "-";
           return (
-            <Text type={pnl >= 0 ? "success" : "danger"}>
+            <span style={{ color: pnlColor(pnl) }}>
               {sign}{sym}{Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
+            </span>
           );
         },
       },
@@ -430,10 +430,10 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         width: 100,
         render: (pnl: number | null) =>
           pnl != null ? (
-            <Text type={pnl >= 0 ? "success" : "danger"}>
+            <span style={{ color: pnlColor(pnl) }}>
               {pnl >= 0 ? "+" : ""}
               {pnl.toFixed(2)}%
-            </Text>
+            </span>
           ) : (
             <span>-</span>
           ),
@@ -454,7 +454,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         ),
       },
     ],
-    [handleShowTransactions]
+    [handleShowTransactions, pnlColor]
   );
 
   if (loading && !overview) {
