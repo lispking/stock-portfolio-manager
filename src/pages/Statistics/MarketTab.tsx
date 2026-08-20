@@ -220,7 +220,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
       render: (name: string, record: AggregatedStock) => (
         <Tag color={record.category_color}>{name}</Tag>
       ),
-      width: 90,
+      width: 80,
     },
     {
       title: "持仓数量",
@@ -271,7 +271,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
         return `${pct.toFixed(2)}%`;
       },
       align: "right" as const,
-      width: 90,
+      width: 80,
     },
     {
       title: "盈亏金额",
@@ -486,7 +486,7 @@ export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
             )}
           </Row>
 
-          <Card title="个股明细" className="mt-4">
+          <Card title="持仓明细" className="mt-4">
             <Table
               columns={stockColumns}
               dataSource={aggregatedStocks}

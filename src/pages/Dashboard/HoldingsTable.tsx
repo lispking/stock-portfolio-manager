@@ -164,7 +164,7 @@ export default function HoldingsTable({ holdings, loading, hideAccountMarket = f
         return `${pct.toFixed(2)}%`;
       },
       align: "right",
-      width: 90,
+      width: 80,
     },
     {
       title: "盈亏金额",

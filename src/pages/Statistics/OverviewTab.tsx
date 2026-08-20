@@ -251,7 +251,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
       render: (name: string, record: AggregatedStock) => (
         <Tag color={record.category_color}>{name}</Tag>
       ),
-      width: 90,
+      width: 80,
     },
     {
       title: "持仓数量",
@@ -307,7 +307,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
         return `${pct.toFixed(2)}%`;
       },
       align: "right" as const,
-      width: 90,
+      width: 80,
     },
     {
       title: "盈亏金额",
@@ -564,7 +564,7 @@ export default function OverviewTab({ overview, loading, baseCurrency }: Props) 
       {aggregatedStocks.length > 0 && (
         <Row gutter={[16, 16]} className="mt-4">
           <Col xs={24}>
-            <Card title="个股明细">
+            <Card title="持仓明细">
               <Table
                 columns={stockColumns}
                 dataSource={aggregatedStocks}
