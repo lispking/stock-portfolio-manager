@@ -502,4 +502,20 @@ body {
   border-radius: 0;
 }
 
+/* Quarterly holdings keeps the expanded table indented on the left while
+   remaining flush with the parent table on the right. */
+.quarterly-holding-sub-table {
+  margin-left: 2rem;
+  width: calc(100% - 2rem);
+}
+
+.quarterly-holding-sub-table .ant-table,
+.quarterly-holding-sub-table .ant-table-container,
+.quarterly-holding-sub-table .ant-table-content,
+.quarterly-holding-sub-table .ant-table-thead > tr > th:first-child,
+.quarterly-holding-sub-table .ant-table-thead > tr > th:last-child,
+.quarterly-holding-sub-table .ant-table-tbody > tr:last-child > td:first-child,
+.quarterly-holding-sub-table .ant-table-tbody > tr:last-child > td:last-child {
+  border-radius: 0 !important;
+}
 
